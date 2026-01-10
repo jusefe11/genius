@@ -1,40 +1,103 @@
-name: Terraform DEV Destroy & Apply
+name: Terraform CI/CD con aprobaciones
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
-  destroy-dev:
-    name: Destroy DEV
+  deploy-dev:
+    name: Deploy DEV
     runs-on: ubuntu-latest
     environment: dev
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
 
       - name: Terraform Init DEV
         working-directory: infra/envs/dev
         run: terraform init
 
-      - name: Terraform Destroy DEV
+      - name: Terraform Plan DEV
         working-directory: infra/envs/dev
-        run: terraform destroy -auto-approve
-
-  apply-dev:
-    name: Apply DEV
-    runs-on: ubuntu-latest
-    environment: dev
-    needs: destroy-dev
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-
-      - name: Terraform Init DEV
-        working-directory: infra/envs/dev
-        run: terraform init
+        run: terraform plan
 
       - name: Terraform Apply DEV
         working-directory: infra/envs/dev
+        run: terraform apply -auto-approve
+
+  deploy-qa:
+    name: Deploy QA
+    runs-on: ubuntu-latest
+    environment: qa
+    needs: deploy-dev
+
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Terraform Init QA
+        working-directory: infra/envs/qa
+        run: terraform init
+
+      - name: Terraform Plan QA
+        working-directory: infra/envs/qa
+        run: terraform plan
+
+      - name: Terraform Apply QA
+        working-directory: infra/envs/qa
+        run: terraform apply -auto-approve
+
+  deploy-prod:
+    name: Deploy PROD
+    runs-on: ubuntu-latest
+    environment: prod
+    needs: deploy-qa
+
+    steps:
+      - name: Descargar código
+        uses: actions/checkout@v4
+
+      - name: Instalar Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Terraform Init PROD
+        working-directory: infra/envs/prod
+        run: terraform init
+
+      - name: Terraform Plan PROD
+        working-directory: infra/envs/prod
+        run: terraform plan
+
+      - name: Terraform Apply PROD
+        working-directory: infra/envs/prod
         run: terraform apply -auto-approve
