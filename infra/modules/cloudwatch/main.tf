@@ -210,11 +210,4 @@ resource "aws_cloudwatch_dashboard" "main" {
       }
     ]
   })
-
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-application-status-dashboard"
-    Environment = var.environment
-    Project     = var.project_name
-    Type        = "cloudwatch-dashboard"
-  }
 }
