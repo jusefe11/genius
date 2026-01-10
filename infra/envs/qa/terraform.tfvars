@@ -34,13 +34,15 @@ db_engine = "mysql"
 # enable_redis = true
 
 # Configuración de Application Load Balancer
+# Para habilitar HTTPS, descomenta las siguientes líneas y proporciona el certificate_arn:
 # enable_https = true
-# certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxx"
+# certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxx"  # REQUERIDO si enable_https = true
+enable_https = false  # Deshabilitado hasta tener certificado SSL/TLS
 health_check_path = "/"
 
 # Configuración de Auto Scaling Group
 # ami_id = "ami-xxxxx"  # Dejar vacío para usar la AMI más reciente de Amazon Linux 2
-instance_type = "t3.small"
+instance_type = "t3.micro"  # Free Tier elegible
 # key_name = "my-key-pair"  # Nombre de la clave SSH en AWS (opcional)
 
 # Capacidades del Auto Scaling Group (QA: valores más altos que dev)

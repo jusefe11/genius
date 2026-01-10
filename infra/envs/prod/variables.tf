@@ -74,11 +74,11 @@ variable "enable_redis" {
 variable "enable_https" {
   description = "Habilitar HTTPS en el ALB (requiere certificate_arn)"
   type        = bool
-  default     = true
+  default     = false  # Cambiado a false por defecto - requiere certificate_arn explícito
 }
 
 variable "certificate_arn" {
-  description = "ARN del certificado SSL/TLS para HTTPS"
+  description = "ARN del certificado SSL/TLS para HTTPS (requerido si enable_https = true)"
   type        = string
   default     = ""
 }
@@ -97,9 +97,9 @@ variable "ami_id" {
 }
 
 variable "instance_type" {
-  description = "Tipo de instancia EC2"
+  description = "Tipo de instancia EC2 (Free Tier: t3.micro, t2.micro, t4g.micro)"
   type        = string
-  default     = "t3.medium"
+  default     = "t3.micro"  # Cambiado a Free Tier elegible
 }
 
 variable "key_name" {

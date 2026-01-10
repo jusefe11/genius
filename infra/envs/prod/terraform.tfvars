@@ -34,13 +34,15 @@ db_engine = "mysql"
 
 # Configuración de Application Load Balancer (Producción)
 # IMPORTANTE: Habilitar HTTPS en producción
+# Para habilitar HTTPS, descomenta las siguientes líneas y proporciona el certificate_arn:
 # enable_https = true
 # certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxx"  # REQUERIDO si enable_https = true
+enable_https = false  # Deshabilitado hasta tener certificado SSL/TLS
 health_check_path = "/health"
 
 # Configuración de Auto Scaling Group (Producción)
 # ami_id = "ami-xxxxx"  # Dejar vacío para usar la AMI más reciente de Amazon Linux 2
-instance_type = "t3.medium"
+instance_type = "t3.micro"  # Free Tier elegible
 # key_name = "my-key-pair"  # Nombre de la clave SSH en AWS (opcional, solo si enable_ssh = true)
 
 # Capacidades del Auto Scaling Group (Producción: valores más altos)
