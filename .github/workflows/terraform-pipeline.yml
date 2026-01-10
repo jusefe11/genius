@@ -1,10 +1,10 @@
-name: Terraform CI/CD DEV (apply / destroy)
+name: Terraform CI/CD Multi-Ambiente
 
 on:
   workflow_dispatch:
     inputs:
       action:
-        description: "Acción de Terraform a ejecutar"
+        description: "Acción de Terraform"
         required: true
         default: apply
         type: choice
@@ -12,11 +12,21 @@ on:
           - apply
           - destroy
 
+      environment:
+        description: "Ambiente a desplegar"
+        required: true
+        default: dev
+        type: choice
+        options:
+          - dev
+          - qa
+          - prod
+
 jobs:
-  terraform-dev:
-    name: Terraform DEV
+  terraform:
+    name: Terraform ${{ github.event.inputs.environment }}
     runs-on: ubuntu-latest
-    environment: dev
+    environment: ${{ github.event.inputs.environment }}
 
     steps:
       - name: Descargar código
@@ -32,17 +42,16 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: us-east-1
 
-      - name: Terraform Init DEV
-        working-directory: infra/envs/dev
+      - name: Terraform Init
+        working-directory: infra/envs/${{ github.event.inputs.environment }}
         run: terraform init
 
-      - name: Terraform Apply DEV
+      - name: Terraform Apply
         if: ${{ github.event.inputs.action == 'apply' }}
-        working-directory: infra/envs/dev
+        working-directory: infra/envs/${{ github.event.inputs.environment }}
         run: terraform apply -auto-approve
 
-      - name: Terraform Destroy DEV
+      - name: Terraform Destroy
         if: ${{ github.event.inputs.action == 'destroy' }}
-        working-directory: infra/envs/dev
+        working-directory: infra/envs/${{ github.event.inputs.environment }}
         run: terraform destroy -auto-approve
-
