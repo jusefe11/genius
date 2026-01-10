@@ -74,3 +74,17 @@ module "autoscaling" {
   max_size          = var.max_size
   desired_capacity  = var.desired_capacity
 }
+
+# Módulo CloudWatch (Monitoreo)
+module "cloudwatch" {
+  source = "../../modules/cloudwatch"
+
+  project_name       = var.project_name
+  environment        = var.environment
+  alb_arn            = module.alb.alb_arn
+  target_group_arn   = module.alb.target_group_arn
+  target_group_name  = module.alb.target_group_name
+  asg_name           = module.autoscaling.autoscaling_group_name
+  cpu_threshold      = 80
+  error_5xx_threshold = 5
+}
