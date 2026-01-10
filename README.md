@@ -1,6 +1,6 @@
 # Genius Project - Sistema de Contratos
 
-Proyecto de infraestructura como código con Terraform para desplegar un sistema de contratos en AWS, siguiendo buenas prácticas de arquitectura y seguridad.
+Proyecto de infraestructura como código con Terraform para desplegar un sistema de contratos en AWS, siguiendo buenas prácticas de arquitectura y seguridad. juan ferrer
 
 ## Estructura del Proyecto
 
