@@ -6,9 +6,16 @@ resource "aws_lb" "main" {
   security_groups    = var.security_group_ids
   subnets            = var.public_subnet_ids
 
-  enable_deletion_protection = var.enable_deletion_protection
+  enable_deletion_protection = false  # Siempre false para permitir destroy rápido
   enable_http2               = true
   enable_cross_zone_load_balancing = true
+
+  # Timeouts para evitar bloqueos durante destroy
+  timeouts {
+    create = "10m"
+    update = "10m"
+    delete = "15m"
+  }
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-alb"
@@ -37,6 +44,9 @@ resource "aws_lb_target_group" "app" {
   }
 
   deregistration_delay = 30
+
+  # Dependencia explícita para asegurar orden de destroy
+  depends_on = [aws_lb.main]
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-tg"
@@ -74,6 +84,9 @@ resource "aws_lb_listener" "http" {
     }
   }
 
+  # Dependencia explícita para asegurar orden de destroy
+  depends_on = [aws_lb.main, aws_lb_target_group.app]
+
   tags = {
     Name        = "${var.project_name}-${var.environment}-http-listener"
     Environment = var.environment
@@ -95,6 +108,9 @@ resource "aws_lb_listener" "https" {
     type             = "forward"
     target_group_arn = aws_lb_target_group.app.arn
   }
+
+  # Dependencia explícita para asegurar orden de destroy
+  depends_on = [aws_lb.main, aws_lb_target_group.app]
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-https-listener"

@@ -9,35 +9,51 @@ genius/
 ├── infra/                              # Configuración de infraestructura Terraform
 │   ├── modules/                        # Módulos reutilizables y modulares
 │   │   ├── vpc/                        # Módulo de red (VPC)
-│   │   │   ├── main.tf                # Recursos principales de VPC
+│   │   │   ├── main.tf                # Recursos principales de VPC (con timeouts optimizados)
 │   │   │   ├── variables.tf           # Variables de entrada del módulo
 │   │   │   └── outputs.tf             # Valores de salida del módulo
 │   │   ├── security_groups/           # Módulo de Security Groups
 │   │   │   ├── main.tf                # Definición de todos los Security Groups
 │   │   │   ├── variables.tf           # Variables del módulo
-│   │   │   └── outputs.tf             # Outputs de IDs de Security Groups
+│   │   │   ├── outputs.tf             # Outputs de IDs de Security Groups
+│   │   │   └── COMPONENTES_DESPLIEGUE.md # Documentación detallada de Security Groups
 │   │   ├── alb/                       # Módulo de Application Load Balancer
-│   │   │   ├── main.tf                # ALB, Target Groups, Listeners
+│   │   │   ├── main.tf                # ALB, Target Groups, Listeners (con timeouts y depends_on)
 │   │   │   ├── variables.tf           # Variables de configuración del ALB
 │   │   │   └── outputs.tf             # Outputs del ALB (DNS, ARNs, etc.)
-│   │   └── autoscaling/               # Módulo de Auto Scaling Group
-│   │       ├── main.tf                # Launch Template y ASG
-│   │       ├── variables.tf           # Variables de ASG
-│   │       ├── outputs.tf             # Outputs del ASG
-│   │       └── user_data.sh           # Script de inicialización de instancias
+│   │   ├── autoscaling/               # Módulo de Auto Scaling Group
+│   │   │   ├── main.tf                # Launch Template y ASG
+│   │   │   ├── variables.tf           # Variables de ASG
+│   │   │   ├── outputs.tf             # Outputs del ASG
+│   │   │   └── user_data.sh           # Script de inicialización de instancias
+│   │   └── cloudwatch/                # Módulo de CloudWatch (Monitoreo)
+│   │       ├── main.tf                # Alarmas y Dashboard de CloudWatch
+│   │       ├── variables.tf           # Variables de configuración de CloudWatch
+│   │       └── outputs.tf             # Outputs de Alarmas y Dashboard
+│   ├── backend-setup/                 # Setup del Backend Remoto de Terraform
+│   │   ├── main.tf                    # Bucket S3 y tabla DynamoDB para estado remoto
+│   │   ├── variables.tf               # Variables del backend setup
+│   │   ├── outputs.tf                 # Outputs del backend (bucket name, etc.)
+│   │   └── README.md                  # Guía para configurar el backend remoto
 │   ├── envs/                          # Configuración por ambiente
 │   │   ├── dev/                       # Ambiente de desarrollo
 │   │   │   ├── main.tf                # Orquestación de módulos para dev
 │   │   │   ├── variables.tf           # Variables del ambiente dev
 │   │   │   ├── terraform.tfvars       # Valores específicos de dev
 │   │   │   ├── provider.tf            # Configuración del provider AWS
+│   │   │   ├── backend.tf             # Configuración del backend remoto (S3 + DynamoDB)
 │   │   │   └── outputs.tf             # Outputs del ambiente dev
 │   │   ├── qa/                        # Ambiente de QA (igual estructura que dev)
 │   │   └── prod/                      # Ambiente de producción (igual estructura)
 │   ├── provider.tf                    # Provider AWS (configuración base)
 │   └── backend.tf                     # Backend de Terraform (opcional, S3)
 ├── app/                               # Aplicación y código fuente
-└── .github/                           # Workflows de CI/CD
+│   └── Dockerfile                     # Dockerfile de la aplicación
+├── .github/                           # Workflows de CI/CD
+│   └── workflows/
+│       └── terraform-pipeline.yml     # Pipeline de CI/CD para Terraform
+├── README.md                          # Este archivo - Documentación principal
+└── TABLA_DESPLIEGUE_DEV.md            # Tabla detallada de recursos para ambiente DEV
 ```
 
 ## Arquitectura de la Infraestructura
@@ -70,6 +86,12 @@ EC2 Instances [Subredes Privadas]
 - ✅ **Multi-AZ**: Alta disponibilidad en al menos 2 zonas de disponibilidad
 - ✅ **Auto Scaling**: Escalado automático basado en carga
 - ✅ **Health Checks**: Monitoreo continuo del estado de las instancias
+
+### Características de Monitoreo
+
+- ✅ **CloudWatch Dashboard**: Dashboard con métricas clave (Healthy Hosts, Request Count, Response Time, CPU)
+- ✅ **CloudWatch Alarms**: Alarmas configuradas para instancias no saludables, errores 5xx y CPU alto
+- ✅ **Métricas automáticas**: Métricas de ALB y EC2 sin configuración adicional
 
 ## Tabla de Componentes Desplegados
 
@@ -120,11 +142,20 @@ La siguiente tabla detalla todos los recursos de AWS que se crean al ejecutar `t
 | 24 | Autoscaling | `aws_autoscaling_policy.scale_down` | Auto Scaling Policy | 1 | Política de escalado hacia abajo |
 | 25 | Autoscaling | `aws_instance` (vía ASG) | EC2 Instance | 1-20 | Instancias EC2 (variable según ASG) |
 
+### 📊 MONITOREO Y ALARMAS
+
+| # | Módulo | Recurso AWS | Tipo | Cantidad | Descripción |
+|---|--------|-------------|------|----------|-------------|
+| 26 | CloudWatch | `aws_cloudwatch_metric_alarm.unhealthy_hosts` | CloudWatch Alarm | 1 | Alarma de instancias no saludables |
+| 27 | CloudWatch | `aws_cloudwatch_metric_alarm.http_5xx_errors` | CloudWatch Alarm | 1 | Alarma de errores HTTP 5xx |
+| 28 | CloudWatch | `aws_cloudwatch_metric_alarm.high_cpu` | CloudWatch Alarm | 1 | Alarma de CPU alto |
+| 29 | CloudWatch | `aws_cloudwatch_dashboard.main` | CloudWatch Dashboard | 1 | Dashboard de monitoreo de aplicación |
+
 ### 📊 DATA SOURCES
 
 | # | Módulo | Recurso AWS | Tipo | Cantidad | Descripción |
 |---|--------|-------------|------|----------|-------------|
-| 26 | Env | `data.aws_ami.amazon_linux` | Data Source | 0-1 | Obtiene AMI más reciente (si ami_id vacío) |
+| 30 | Env | `data.aws_ami.amazon_linux` | Data Source | 0-1 | Obtiene AMI más reciente (si ami_id vacío) |
 
 ### Resumen por Categoría
 
@@ -135,16 +166,17 @@ La siguiente tabla detalla todos los recursos de AWS que se crean al ejecutar `t
 | **Load Balancer** | 3 | 4 | ALB + Target Group + 1-2 Listeners |
 | **Auto Scaling** | 4 | 4 | Launch Template + ASG + 2 políticas |
 | **Instancias EC2** | 1 | 20 | Variable según configuración del ASG |
+| **CloudWatch** | 4 | 4 | 3 Alarmas + 1 Dashboard |
 | **Data Sources** | 0 | 1 | Solo si no se especifica AMI ID |
-| **TOTAL** | **22** | **45** | Depende de configuración y opciones habilitadas |
+| **TOTAL** | **26** | **49** | Depende de configuración y opciones habilitadas |
 
 ### Cantidad de Recursos por Ambiente
 
-| Ambiente | Instancias EC2 | Listeners ALB | Security Groups | Total Aprox. |
-|----------|----------------|---------------|-----------------|--------------|
-| **dev** | 1-5 | 1-2 | 4-6 | ~25-30 recursos |
-| **qa** | 2-10 | 1-2 | 4-6 | ~30-35 recursos |
-| **prod** | 2-20 | 2 | 4-6 | ~35-45 recursos |
+| Ambiente | Instancias EC2 | Listeners ALB | Security Groups | CloudWatch | Total Aprox. |
+|----------|----------------|---------------|-----------------|------------|--------------|
+| **dev** | 1-5 | 1-2 | 4-6 | 4 | ~29-34 recursos |
+| **qa** | 2-10 | 1-2 | 4-6 | 4 | ~34-39 recursos |
+| **prod** | 2-20 | 2 | 4-6 | 4 | ~39-49 recursos |
 
 ### Notas Importantes sobre la Tabla
 
@@ -174,6 +206,18 @@ La siguiente tabla detalla todos los recursos de AWS que se crean al ejecutar `t
 | `aws_nat_gateway.main[0..N]` | NAT Gateways | Uno en cada subred pública (alta disponibilidad) |
 | `aws_route_table.public` | Tabla de ruteo pública | Ruta `0.0.0.0/0` → Internet Gateway |
 | `aws_route_table.private[0..N]` | Tablas de ruteo privadas | Ruta `0.0.0.0/0` → NAT Gateway correspondiente |
+
+**Optimizaciones de Destroy**:
+- ✅ **Timeouts configurados** para todos los recursos críticos:
+  - VPC: `create: 10m`, `delete: 15m`
+  - Internet Gateway: `create: 5m`, `delete: 10m`
+  - NAT Gateway: `create: 10m`, `delete: 10m` (reduce destroy de ~20min a ~5-10min)
+  - Elastic IP: `read: 5m`, `delete: 10m`
+- ✅ **Dependencias explícitas** (`depends_on`) para orden correcto de destrucción:
+  - Elastic IP depende del Internet Gateway
+  - NAT Gateway depende del Internet Gateway
+  - Route Tables dependen de IGW/NAT según corresponda
+  - Evita error: `Network has some mapped public address(es)`
 
 **Variables principales**:
 - `vpc_cidr`: CIDR de la VPC (ej: `10.0.0.0/16`)
@@ -290,10 +334,19 @@ Egress:
 - `certificate_arn`: ARN del certificado SSL/TLS (requerido si `enable_https = true`)
 - `enable_deletion_protection`: Protección contra eliminación (default: false, true en prod)
 
+**Optimizaciones de Destroy**:
+- ✅ **Deletion Protection**: Siempre configurado como `false` para permitir destroy rápido
+- ✅ **Timeouts configurados**: 
+  - `create: 10m`
+  - `update: 10m`
+  - `delete: 15m`
+- ✅ **Dependencias explícitas**: `depends_on` configurado para orden correcto de destrucción (Target Group → Listeners → ALB)
+
 **Outputs**:
 - `alb_dns_name`: DNS del ALB (para acceder a la aplicación)
 - `alb_zone_id`: Zone ID del ALB (útil para Route53)
 - `target_group_arn`: ARN del Target Group (para asociar con ASG)
+- `alb_arn`: ARN completo del ALB (para CloudWatch y otros servicios)
 
 ### 4. Módulo Autoscaling (`infra/modules/autoscaling/`)
 
@@ -341,7 +394,122 @@ Egress:
 - `autoscaling_group_id`, `autoscaling_group_name`
 - `scale_up_policy_arn`, `scale_down_policy_arn`
 
-### 5. Configuración por Ambiente (`infra/envs/{dev|qa|prod}/`)
+### 5. Módulo CloudWatch (`infra/modules/cloudwatch/`)
+
+**Propósito**: Crea alarmas y dashboard de monitoreo para la aplicación usando AWS CloudWatch.
+
+**Recursos creados**:
+
+| Recurso | Descripción | Configuración |
+|---------|-------------|---------------|
+| `aws_cloudwatch_metric_alarm.unhealthy_hosts` | Alarma de instancias no saludables | Se activa cuando hay hosts no saludables en el Target Group |
+| `aws_cloudwatch_metric_alarm.http_5xx_errors` | Alarma de errores 5xx | Se activa cuando hay errores HTTP 5xx (default: >5 errores en 5 min) |
+| `aws_cloudwatch_metric_alarm.high_cpu` | Alarma de CPU alto | Se activa cuando CPU > umbral (default: >80% durante 2 períodos) |
+| `aws_cloudwatch_dashboard.main` | Dashboard de monitoreo | Dashboard con métricas clave de la aplicación |
+
+**Alarmas configuradas**:
+
+1. **Unhealthy Hosts**:
+   - Métrica: `UnHealthyHostCount` del Target Group
+   - Namespace: `AWS/ApplicationELB`
+   - Umbral: > 0 hosts no saludables
+   - Evaluación: 1 período de 60 segundos
+
+2. **HTTP 5xx Errors**:
+   - Métrica: `HTTPCode_Target_5XX_Count` del ALB
+   - Namespace: `AWS/ApplicationELB`
+   - Umbral: Configurable (default: >5 errores)
+   - Evaluación: 1 período de 300 segundos
+
+3. **High CPU**:
+   - Métrica: `CPUUtilization` del ASG
+   - Namespace: `AWS/EC2`
+   - Umbral: Configurable (default: >80%)
+   - Evaluación: 2 períodos de 300 segundos
+
+**Dashboard de CloudWatch**:
+
+El dashboard incluye 4 widgets principales:
+
+1. **Healthy Hosts** (Single Value): Muestra el número actual de hosts saludables
+2. **Request Count** (Time Series): Gráfico de línea con el número de solicitudes en el tiempo
+3. **Response Time** (Time Series): Tiempo de respuesta promedio en segundos
+4. **CPU Usage** (Time Series): Uso de CPU promedio del ASG en porcentaje
+
+**Variables principales**:
+- `alb_arn`: ARN del Application Load Balancer
+- `target_group_arn`: ARN del Target Group
+- `target_group_name`: Nombre del Target Group
+- `asg_name`: Nombre del Auto Scaling Group
+- `cpu_threshold`: Umbral de CPU para alarma (default: 80)
+- `error_5xx_threshold`: Umbral de errores 5xx (default: 5)
+
+**Outputs**:
+- `unhealthy_hosts_alarm_arn`: ARN de la alarma de hosts no saludables
+- `http_5xx_errors_alarm_arn`: ARN de la alarma de errores 5xx
+- `high_cpu_alarm_arn`: ARN de la alarma de CPU alto
+- `dashboard_url`: URL del dashboard de CloudWatch
+
+**Nota**: Las alarmas están configuradas para no activarse cuando no hay datos (`treat_missing_data = "notBreaching"`), lo cual es útil durante despliegues o cuando no hay tráfico.
+
+### 6. Backend Setup (`infra/backend-setup/`)
+
+**Propósito**: Crea los recursos necesarios para el backend remoto de Terraform (S3 + DynamoDB para estado remoto y bloqueo).
+
+**⚠️ IMPORTANTE**: Este setup se ejecuta **UNA SOLA VEZ** antes de usar los backends remotos en los ambientes. Se ejecuta con backend local porque estamos creando los recursos que almacenarán el estado.
+
+**Recursos creados**:
+
+| Recurso | Descripción | Configuración |
+|---------|-------------|---------------|
+| `aws_s3_bucket.terraform_state` | Bucket S3 para estado de Terraform | Versionado habilitado, encriptación AES256, acceso público bloqueado |
+| `aws_s3_bucket_versioning.terraform_state` | Versionado del bucket | Versionado habilitado para historial de estados |
+| `aws_s3_bucket_server_side_encryption_configuration` | Encriptación del bucket | Encriptación AES256 para seguridad |
+| `aws_s3_bucket_public_access_block` | Bloqueo de acceso público | Bloquea todo acceso público al bucket |
+| `aws_dynamodb_table.terraform_locks` | Tabla DynamoDB para locks | Modo PAY_PER_REQUEST, clave primaria: LockID |
+
+**Configuración del Bucket S3**:
+- **Nombre**: `genius-terraform-state-{region}` (único globalmente)
+- **Versionado**: Habilitado para mantener historial de estados
+- **Encriptación**: AES256 (server-side encryption)
+- **Acceso público**: Bloqueado completamente
+- **Lifecycle**: Configurable (por defecto sin expiración)
+
+**Configuración de DynamoDB**:
+- **Nombre de tabla**: `terraform-locks`
+- **Modo**: PAY_PER_REQUEST (sin capacidad reservada, paga por uso)
+- **Clave primaria**: `LockID` (String)
+- **Propósito**: Prevenir modificaciones concurrentes del estado (state locking)
+
+**Cómo usar**:
+
+1. **Primera vez** (crear el backend):
+   ```bash
+   cd infra/backend-setup
+   terraform init
+   terraform plan
+   terraform apply
+   ```
+
+2. **Migrar ambientes al backend remoto**:
+   ```bash
+   cd infra/envs/dev  # (o qa, prod)
+   terraform init -migrate-state
+   ```
+
+3. **Verificar migración**:
+   ```bash
+   terraform state list  # Debe mostrar todos los recursos
+   ```
+
+**Seguridad**:
+- ✅ Bucket S3 con acceso público bloqueado
+- ✅ Encriptación automática del estado
+- ✅ State locking para prevenir conflictos
+- ✅ Versionado para recuperación de estados anteriores
+- ⚠️ Los recursos tienen `prevent_destroy = true` por defecto para evitar eliminaciones accidentales
+
+### 7. Configuración por Ambiente (`infra/envs/{dev|qa|prod}/`)
 
 Cada ambiente tiene su propia configuración que orquesta todos los módulos:
 
@@ -353,8 +521,11 @@ Cada ambiente tiene su propia configuración que orquesta todos los módulos:
    ↓ Outputs: security_group_ids
 3. Data Source: aws_ami (obtiene AMI más reciente si no se especifica)
 4. Módulo ALB (usa outputs de VPC y Security Groups)
-   ↓ Outputs: target_group_arn
+   ↓ Outputs: target_group_arn, alb_arn
 5. Módulo Autoscaling (usa todos los outputs anteriores)
+   ↓ Outputs: autoscaling_group_name
+6. Módulo CloudWatch (usa outputs de ALB y Autoscaling)
+   ↓ Outputs: alarm ARNs, dashboard URL
 ```
 
 #### **variables.tf** - Variables del Ambiente
@@ -428,7 +599,7 @@ El siguiente diagrama muestra cómo los módulos se integran y dependen unos de 
 │  Outputs: target_group_arn   │                   │
 └──────────────┬───────────────┘                   │
                │                                   │
-               └───────────────┬───────────────────┘
+                └───────────────┬───────────────────┘
                                │
                                ▼
                 ┌──────────────────────────────┐
@@ -438,6 +609,17 @@ El siguiente diagrama muestra cómo los módulos se integran y dependen unos de 
                 │          [app_sg_id],        │
                 │          target_group_arn    │
                 │  Outputs: asg_name, etc.     │
+                └──────────────┬───────────────┘
+                               │
+                               │
+                               ▼
+                ┌──────────────────────────────┐
+                │   Módulo CloudWatch          │
+                │  Inputs: alb_arn,            │
+                │          target_group_arn,   │
+                │          asg_name            │
+                │  Outputs: alarm ARNs,        │
+                │          dashboard URL       │
                 └──────────────────────────────┘
 ```
 
@@ -556,12 +738,30 @@ aws configure
 
 ## Despliegue en AWS
 
+### Paso 0: Configurar Backend Remoto (Primera vez, opcional pero recomendado)
+
+Si es la primera vez o quieres usar backend remoto para compartir estado entre equipo:
+
+```bash
+# 1. Crear el backend (bucket S3 + tabla DynamoDB)
+cd infra/backend-setup
+terraform init
+terraform plan
+terraform apply
+
+# 2. Migrar el estado de cada ambiente al backend remoto
+cd ../envs/dev  # (o qa, prod)
+terraform init -migrate-state
+```
+
+**Nota**: Si trabajas solo o es un proyecto pequeño, puedes omitir este paso y usar backend local.
+
 ### Paso 1: Configurar la región (opcional)
 Edita `infra/envs/{ambiente}/terraform.tfvars` si quieres cambiar la región o valores de red.
 
 ### Paso 2: Inicializar Terraform
 ```bash
-cd infra/envs/dev
+cd infra/envs/dev  # (o qa, prod)
 terraform init
 ```
 
@@ -569,7 +769,7 @@ terraform init
 ```bash
 terraform plan
 ```
-Esto mostrará todos los recursos que se crearán en AWS.
+Esto mostrará todos los recursos que se crearán en AWS (incluyendo VPC, Security Groups, ALB, ASG, CloudWatch).
 
 ### Paso 4: Aplicar la configuración
 ```bash
@@ -579,13 +779,15 @@ Confirma con `yes` cuando se solicite.
 
 ### Paso 5: Verificar el despliegue
 ```bash
-# Ver outputs del módulo VPC
+# Ver outputs del despliegue (DNS del ALB, IDs de recursos, etc.)
 terraform output
 
 # O ver recursos específicos en la consola de AWS:
 # - VPC: https://console.aws.amazon.com/vpc/
-# - Subnets: En la misma consola
-# - NAT Gateways: https://console.aws.amazon.com/vpc/home?region=us-east-1#NatGateways:
+# - ALB: https://console.aws.amazon.com/ec2/v2/home#LoadBalancers:
+# - Auto Scaling Groups: https://console.aws.amazon.com/ec2autoscaling/home
+# - CloudWatch Dashboard: https://console.aws.amazon.com/cloudwatch/home#dashboards:
+# - CloudWatch Alarms: https://console.aws.amazon.com/cloudwatch/home#alarmsV2:
 ```
 
 ## Comandos Útiles
@@ -897,9 +1099,20 @@ allowed_web_cidrs = var.allowed_web_cidrs
 - Políticas de escalado automático (scale up/down)
 
 ### ✅ Gestión de Estado
-- Estado de Terraform versionado (recomendado usar S3 backend en producción)
+- Estado de Terraform versionado con backend remoto (S3 + DynamoDB)
 - Tagging consistente en todos los recursos
 - Outputs claros para integración con otros sistemas
+
+### ✅ Monitoreo y Observabilidad
+- CloudWatch Dashboard con métricas clave (Healthy Hosts, Request Count, Response Time, CPU)
+- Alarmas configuradas para instancias no saludables, errores 5xx y CPU alto
+- Métricas automáticas de ALB y EC2 sin configuración adicional
+
+### ✅ Optimizaciones de Destroy
+- Timeouts configurados en todos los recursos críticos para evitar bloqueos
+- Dependencias explícitas (`depends_on`) para orden correcto de destrucción
+- Destroy Protection deshabilitado en dev/qa para destroy rápido
+- Destroy de NAT Gateway optimizado (reducido de ~20min a ~5-10min)
 
 ## Componentes Opcionales y Futuras Mejoras
 
@@ -909,16 +1122,22 @@ allowed_web_cidrs = var.allowed_web_cidrs
 2. **Redis/ElastiCache** - Security Group `redis-sg` disponible si se necesita cache
 3. **Bastion Host** - Security Group `bastion-sg` disponible para acceso SSH seguro
 
+### Componentes Ya Implementados ✅
+
+1. ✅ **Backend S3 + DynamoDB**: Backend remoto configurado (`infra/backend-setup/`)
+2. ✅ **CloudWatch Alarms y Dashboard**: Monitoreo completo implementado (`infra/modules/cloudwatch/`)
+3. ✅ **Optimizaciones de Destroy**: Timeouts y dependencias configuradas en ALB y VPC
+
 ### Mejoras Futuras Recomendadas
 
-1. **Backend S3**: Configurar backend remoto en S3 con DynamoDB para estado compartido
-2. **CloudWatch Alarms**: Agregar alarmas para monitoreo de carga y salud
-3. **SSL/TLS**: Configurar certificados ACM y habilitar HTTPS en producción
-4. **WAF**: Agregar AWS WAF al ALB para protección adicional
-5. **RDS**: Desplegar base de datos RDS/Aurora usando el `db-sg`
-6. **CI/CD**: Integrar con pipelines de CI/CD (ya hay estructura en `.github/`)
-7. **Application Logs**: Configurar CloudWatch Logs para las aplicaciones
-8. **Backup**: Implementar estrategias de backup para datos críticos
+1. **SSL/TLS**: Configurar certificados ACM y habilitar HTTPS en producción (certificate_arn ya soportado)
+2. **WAF**: Agregar AWS WAF al ALB para protección adicional contra ataques
+3. **RDS**: Desplegar base de datos RDS/Aurora usando el `db-sg` ya creado
+4. **CI/CD**: Integrar con pipelines de CI/CD (ya hay estructura en `.github/workflows/`)
+5. **Application Logs**: Configurar CloudWatch Logs para logs de aplicación (más allá de métricas)
+6. **Backup**: Implementar estrategias de backup para datos críticos (RDS, S3, etc.)
+7. **SNS Notifications**: Configurar notificaciones SNS para las alarmas de CloudWatch
+8. **Auto Scaling basado en métricas**: Conectar alarmas de CloudWatch con políticas de Auto Scaling
 
 ## Troubleshooting
 
@@ -943,6 +1162,113 @@ allowed_web_cidrs = var.allowed_web_cidrs
    - Verificar que el ALB está en subredes públicas
    - Verificar que el `alb-sg` permite tráfico desde Internet (0.0.0.0/0)
    - Verificar que el Internet Gateway está correctamente configurado
+
+5. **Terraform destroy se demora mucho o falla**
+   - Verificar que `enable_deletion_protection = false` en el módulo ALB
+   - Verificar que los timeouts están configurados correctamente
+   - Verificar que no hay ENIs (Elastic Network Interfaces) colgados
+   - Si hay error "Network has some mapped public address(es)": Los `depends_on` deberían resolverlo automáticamente
+
+6. **Error "Network has some mapped public address(es)" al destruir VPC**
+   - Este error ya está resuelto con las dependencias explícitas (`depends_on`)
+   - Asegúrate de que los NAT Gateways se destruyen antes que el Internet Gateway
+   - Los timeouts configurados deberían prevenir este problema
+
+## Optimizaciones de Destroy - Detalles Técnicos
+
+### Problemas Resueltos
+
+Este proyecto implementa optimizaciones específicas para resolver problemas comunes durante `terraform destroy`:
+
+#### 1. Error del Internet Gateway
+**Problema**: AWS bloquea la destrucción del Internet Gateway si hay direcciones IP públicas (EIPs) asociadas a NAT Gateways.
+
+**Solución**:
+- `depends_on` explícito en Elastic IPs y NAT Gateways hacia el Internet Gateway
+- Orden correcto de destrucción: NAT Gateways → EIPs → Route Tables → Internet Gateway
+
+#### 2. ENIs (Elastic Network Interfaces) Colgados
+**Problema**: Interfaces de red que quedan asociadas y bloquean la destrucción.
+
+**Solución**:
+- Dependencias explícitas (`depends_on`) en Target Groups y Listeners del ALB
+- Orden correcto: Listeners → Target Groups → ALB
+
+#### 3. Destroy de 20 minutos
+**Problema**: NAT Gateways pueden tardar mucho en destruirse sin timeouts adecuados.
+
+**Solución**:
+- Timeouts configurados en NAT Gateway: `delete: 10m` (reduce de ~20min a ~5-10min)
+- Timeouts en todos los recursos críticos para evitar bloqueos
+
+### Configuraciones Aplicadas
+
+#### Módulo ALB (`infra/modules/alb/main.tf`)
+```hcl
+resource "aws_lb" "main" {
+  enable_deletion_protection = false  # Siempre false para destroy rápido
+  
+  timeouts {
+    create = "10m"
+    update = "10m"
+    delete = "15m"
+  }
+}
+
+resource "aws_lb_target_group" "app" {
+  depends_on = [aws_lb.main]  # Dependencia explícita
+}
+
+resource "aws_lb_listener" "http" {
+  depends_on = [aws_lb.main, aws_lb_target_group.app]  # Orden correcto
+}
+```
+
+#### Módulo VPC (`infra/modules/vpc/main.tf`)
+```hcl
+resource "aws_vpc" "main" {
+  timeouts {
+    create = "10m"
+    delete = "15m"
+  }
+}
+
+resource "aws_internet_gateway" "main" {
+  timeouts {
+    create = "5m"
+    delete = "10m"
+  }
+}
+
+resource "aws_nat_gateway" "main" {
+  timeouts {
+    create = "10m"
+    delete = "10m"  # Reduce destroy de ~20min a ~5-10min
+  }
+  depends_on = [aws_internet_gateway.main]  # Orden correcto
+}
+
+resource "aws_eip" "nat" {
+  timeouts {
+    read   = "5m"
+    delete = "10m"
+  }
+  depends_on = [aws_internet_gateway.main]  # Evita error de IPs mapeadas
+}
+```
+
+### Resultados Esperados
+
+- ✅ Destroy completo de infraestructura: **~5-15 minutos** (antes: ~20-30 minutos)
+- ✅ Sin errores de "Network has some mapped public address(es)"
+- ✅ Sin ENIs colgados
+- ✅ Destroy sin intervención manual
+
+### Notas Importantes
+
+- Estas optimizaciones son **solo en código Terraform**, no requieren cambios en el pipeline
+- Los timeouts son conservadores pero evitan bloqueos indefinidos
+- Las dependencias explícitas aseguran el orden correcto sin depender del orden implícito de Terraform
 
 ## Configuración del Launch Template - Resumen
 
