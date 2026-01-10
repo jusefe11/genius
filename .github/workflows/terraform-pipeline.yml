@@ -1,14 +1,20 @@
-name: Terraform CI/CD con destroy en DEV
+name: Terraform CI/CD DEV (apply / destroy)
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+    inputs:
+      action:
+        description: "Acción de Terraform a ejecutar"
+        required: true
+        default: apply
+        type: choice
+        options:
+          - apply
+          - destroy
 
 jobs:
-  destroy-dev:
-    name: Destroy DEV
+  terraform-dev:
+    name: Terraform DEV
     runs-on: ubuntu-latest
     environment: dev
 
@@ -30,6 +36,13 @@ jobs:
         working-directory: infra/envs/dev
         run: terraform init
 
+      - name: Terraform Apply DEV
+        if: ${{ github.event.inputs.action == 'apply' }}
+        working-directory: infra/envs/dev
+        run: terraform apply -auto-approve
+
       - name: Terraform Destroy DEV
+        if: ${{ github.event.inputs.action == 'destroy' }}
         working-directory: infra/envs/dev
         run: terraform destroy -auto-approve
+
