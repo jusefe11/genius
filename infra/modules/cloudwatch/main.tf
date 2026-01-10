@@ -95,7 +95,7 @@ resource "aws_cloudwatch_dashboard" "main" {
 
   dashboard_body = jsonencode({
     widgets = [
-      # Widget 1: Healthy Hosts (Número)
+      # Widget 1: Healthy Hosts (Número) - Solo TargetGroup como dimensión
       {
         type   = "metric"
         x      = 0
@@ -108,10 +108,8 @@ resource "aws_cloudwatch_dashboard" "main" {
             [
               "AWS/ApplicationELB",
               "HealthyHostCount",
-              {
-                "TargetGroup"  = var.target_group_arn
-                "LoadBalancer" = var.alb_arn
-              }
+              "TargetGroup",
+              var.target_group_arn
             ]
           ]
           period = 300
@@ -121,7 +119,7 @@ resource "aws_cloudwatch_dashboard" "main" {
           view   = "singleValue"
         }
       },
-      # Widget 2: Request Count (Gráfico línea)
+      # Widget 2: Request Count (Gráfico línea) - Solo LoadBalancer como dimensión
       {
         type   = "metric"
         x      = 6
@@ -134,9 +132,8 @@ resource "aws_cloudwatch_dashboard" "main" {
             [
               "AWS/ApplicationELB",
               "RequestCount",
-              {
-                "LoadBalancer" = var.alb_arn
-              }
+              "LoadBalancer",
+              var.alb_arn
             ]
           ]
           period = 300
@@ -146,7 +143,7 @@ resource "aws_cloudwatch_dashboard" "main" {
           view   = "timeSeries"
         }
       },
-      # Widget 3: Response Time (Gráfico línea)
+      # Widget 3: Response Time (Gráfico línea) - Solo LoadBalancer como dimensión
       {
         type   = "metric"
         x      = 0
@@ -159,9 +156,8 @@ resource "aws_cloudwatch_dashboard" "main" {
             [
               "AWS/ApplicationELB",
               "TargetResponseTime",
-              {
-                "LoadBalancer" = var.alb_arn
-              }
+              "LoadBalancer",
+              var.alb_arn
             ]
           ]
           period = 300
@@ -176,7 +172,7 @@ resource "aws_cloudwatch_dashboard" "main" {
           }
         }
       },
-      # Widget 4: CPU Usage (Gráfico línea)
+      # Widget 4: CPU Usage (Gráfico línea) - Solo AutoScalingGroupName como dimensión
       {
         type   = "metric"
         x      = 9
@@ -189,9 +185,8 @@ resource "aws_cloudwatch_dashboard" "main" {
             [
               "AWS/EC2",
               "CPUUtilization",
-              {
-                "AutoScalingGroupName" = var.asg_name
-              }
+              "AutoScalingGroupName",
+              var.asg_name
             ]
           ]
           period = 300
