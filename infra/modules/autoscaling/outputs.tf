@@ -37,3 +37,13 @@ output "scale_down_policy_arn" {
   description = "ARN de la política de escalado hacia abajo"
   value       = aws_autoscaling_policy.scale_down.arn
 }
+
+output "ssm_role_arn" {
+  description = "ARN del IAM Role para SSM Session Manager"
+  value       = aws_iam_role.ssm_role.arn
+}
+
+output "ssm_instance_profile_name" {
+  description = "Nombre del IAM Instance Profile para SSM Session Manager"
+  value       = aws_iam_instance_profile.ssm_instance_profile.name
+}

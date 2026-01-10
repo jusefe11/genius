@@ -25,9 +25,9 @@ app_port = 8080
 db_port   = 3306
 db_engine = "mysql"
 
-# SSH: habilitar solo si necesitas acceso remoto (recomendado desde VPN o bastion)
-# enable_ssh = true
-# allowed_ssh_cidrs = ["203.0.113.0/24"]  # Cambia por tu IP o rango de IPs de la oficina/VPN
+# SSH: DESHABILITADO - Acceso mediante AWS Systems Manager Session Manager únicamente
+# enable_ssh = false  # No usar SSH - acceso solo mediante Session Manager desde consola de AWS
+# allowed_ssh_cidrs = []  # No se requiere - acceso mediante SSM Session Manager
 
 # Redis/Cache: habilitar si usas ElastiCache
 # enable_redis = true
@@ -43,7 +43,9 @@ health_check_path = "/"  # Igualado a otros ambientes
 # Configuración de Auto Scaling Group (Producción)
 # ami_id = "ami-xxxxx"  # Dejar vacío para usar la AMI más reciente de Amazon Linux 2
 instance_type = "t3.micro"  # Free Tier elegible
-# key_name = "my-key-pair"  # Nombre de la clave SSH en AWS (opcional, solo si enable_ssh = true)
+# key_name no se usa - acceso mediante AWS Systems Manager Session Manager
+# Las instancias tienen un IAM Role con política AmazonSSMManagedInstanceCore
+# Acceso: Consola de AWS -> EC2 -> Instancias -> Conectar -> Session Manager
 
 # Capacidades del Auto Scaling Group
 # Configuración igualada para todos los ambientes
