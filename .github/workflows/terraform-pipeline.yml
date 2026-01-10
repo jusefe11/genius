@@ -1,0 +1,37 @@
+name: Pipeline Terraform con aprobaciones
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-dev:
+    name: Deploy DEV
+    runs-on: ubuntu-latest
+    environment: dev
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Init DEV
+        run: echo "Terraform DEV"
+
+  deploy-qa:
+    name: Deploy QA
+    runs-on: ubuntu-latest
+    environment: qa
+    needs: deploy-dev
+
+    steps:
+      - run: echo "Terraform QA"
+
+  deploy-prod:
+    name: Deploy PROD
+    runs-on: ubuntu-latest
+    environment: prod
+    needs: deploy-qa
+
+    steps:
+      - run: echo "Terraform PROD"
