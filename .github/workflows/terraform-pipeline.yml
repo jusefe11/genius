@@ -1,13 +1,11 @@
-name: Pipeline Terraform con aprobaciones
+name: Terraform DEV Destroy & Apply
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
-  deploy-dev:
-    name: Deploy DEV
+  destroy-dev:
+    name: Destroy DEV
     runs-on: ubuntu-latest
     environment: dev
 
@@ -15,23 +13,28 @@ jobs:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
 
-      - name: Init DEV
-        run: echo "Terraform DEV"
+      - name: Terraform Init DEV
+        working-directory: infra/envs/dev
+        run: terraform init
 
-  deploy-qa:
-    name: Deploy QA
+      - name: Terraform Destroy DEV
+        working-directory: infra/envs/dev
+        run: terraform destroy -auto-approve
+
+  apply-dev:
+    name: Apply DEV
     runs-on: ubuntu-latest
-    environment: qa
-    needs: deploy-dev
+    environment: dev
+    needs: destroy-dev
 
     steps:
-      - run: echo "Terraform QA"
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
 
-  deploy-prod:
-    name: Deploy PROD
-    runs-on: ubuntu-latest
-    environment: prod
-    needs: deploy-qa
+      - name: Terraform Init DEV
+        working-directory: infra/envs/dev
+        run: terraform init
 
-    steps:
-      - run: echo "Terraform PROD"
+      - name: Terraform Apply DEV
+        working-directory: infra/envs/dev
+        run: terraform apply -auto-approve
