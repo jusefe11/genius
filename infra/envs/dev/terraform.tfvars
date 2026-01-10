@@ -47,3 +47,5 @@ instance_type = "t3.micro"
 min_size         = 1
 desired_capacity = 2
 max_size         = 5
+# trigger pipeline
+
