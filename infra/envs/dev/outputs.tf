@@ -32,3 +32,13 @@ output "public_subnet_ids" {
   description = "IDs de las subredes públicas"
   value       = module.vpc.public_subnet_ids
 }
+
+output "cloudwatch_dashboard_name" {
+  description = "Nombre del dashboard de CloudWatch"
+  value       = module.cloudwatch.dashboard_name
+}
+
+output "cloudwatch_dashboard_url" {
+  description = "URL del dashboard de CloudWatch"
+  value       = module.cloudwatch.dashboard_url
+}
