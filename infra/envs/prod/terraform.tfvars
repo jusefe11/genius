@@ -38,14 +38,15 @@ db_engine = "mysql"
 # enable_https = true
 # certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxx"  # REQUERIDO si enable_https = true
 enable_https = false  # Deshabilitado hasta tener certificado SSL/TLS
-health_check_path = "/health"
+health_check_path = "/"  # Igualado a otros ambientes
 
 # Configuración de Auto Scaling Group (Producción)
 # ami_id = "ami-xxxxx"  # Dejar vacío para usar la AMI más reciente de Amazon Linux 2
 instance_type = "t3.micro"  # Free Tier elegible
 # key_name = "my-key-pair"  # Nombre de la clave SSH en AWS (opcional, solo si enable_ssh = true)
 
-# Capacidades del Auto Scaling Group (Producción: valores más altos)
-min_size         = 2
-desired_capacity = 3
-max_size         = 20
+# Capacidades del Auto Scaling Group
+# Configuración igualada para todos los ambientes
+min_size         = 2  # Mantiene mínimo de 2 instancias para alta disponibilidad
+desired_capacity = 2  # Cambiado de 3 a 2 para igualar con otros ambientes
+max_size         = 5  # Cambiado de 20 a 5 para igualar con otros ambientes

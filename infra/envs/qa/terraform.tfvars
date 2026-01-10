@@ -45,7 +45,8 @@ health_check_path = "/"
 instance_type = "t3.micro"  # Free Tier elegible
 # key_name = "my-key-pair"  # Nombre de la clave SSH en AWS (opcional)
 
-# Capacidades del Auto Scaling Group (QA: valores más altos que dev)
-min_size         = 2
-desired_capacity = 2
-max_size         = 10
+# Capacidades del Auto Scaling Group
+# Configuración igualada para todos los ambientes
+min_size         = 2  # Mantiene mínimo de 2 instancias
+desired_capacity = 2  # Mantiene 2 instancias deseadas
+max_size         = 5  # Cambiado de 10 a 5 para igualar con otros ambientes

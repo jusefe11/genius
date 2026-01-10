@@ -3,12 +3,6 @@ resource "aws_vpc" "main" {
   enable_dns_hostnames = true
   enable_dns_support   = true
 
-  # Timeouts para evitar bloqueos durante destroy
-  timeouts {
-    create = "10m"
-    delete = "15m"
-  }
-
   tags = {
     Name        = "${var.project_name}-${var.environment}-vpc"
     Environment = var.environment
@@ -18,12 +12,6 @@ resource "aws_vpc" "main" {
 
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
-
-  # Timeouts para evitar bloqueos durante destroy
-  timeouts {
-    create = "5m"
-    delete = "10m"
-  }
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-igw"
@@ -91,12 +79,6 @@ resource "aws_eip" "nat" {
   count  = length(aws_subnet.public)
   domain = "vpc"
 
-  # Timeouts para evitar bloqueos durante destroy
-  timeouts {
-    read = "5m"
-    delete = "10m"
-  }
-
   # Dependencia explícita del Internet Gateway para evitar error "Network has some mapped public address(es)"
   depends_on = [aws_internet_gateway.main]
 
@@ -112,12 +94,6 @@ resource "aws_nat_gateway" "main" {
   count         = length(aws_subnet.public)
   allocation_id = aws_eip.nat[count.index].id
   subnet_id     = aws_subnet.public[count.index].id
-
-  # Timeouts para evitar bloqueos durante destroy (reduce de 20min a ~5min)
-  timeouts {
-    create = "10m"
-    delete = "10m"
-  }
 
   # Dependencia explícita del Internet Gateway para orden correcto de destrucción
   depends_on = [aws_internet_gateway.main]

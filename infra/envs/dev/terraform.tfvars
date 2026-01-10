@@ -46,8 +46,9 @@ instance_type = "t3.micro"
 # key_name = "my-key-pair"  # Nombre de la clave SSH en AWS (opcional, solo si enable_ssh = true)
 
 # Capacidades del Auto Scaling Group
-min_size         = 1
-desired_capacity = 2
-max_size         = 5
+# Configuración igualada para todos los ambientes
+min_size         = 2  # Cambiado de 1 a 2 para igualar con otros ambientes
+desired_capacity = 2  # Mantiene 2 instancias deseadas
+max_size         = 5  # Mantiene máximo de 5 instancias
 # trigger pipeline
 
