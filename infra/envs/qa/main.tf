@@ -128,7 +128,7 @@ module "autoscaling" {
   secrets_manager_secret_names = concat(
     var.create_db_secret && module.secrets_manager.db_secret_name != null ? [module.secrets_manager.db_secret_name] : [],
     var.create_api_keys_secret && module.secrets_manager.api_keys_secret_name != null ? [module.secrets_manager.api_keys_secret_name] : [],
-    [for name in module.secrets_manager.app_secrets_names : name]
+    [for k, v in module.secrets_manager.app_secrets_names : v]
   )
 
   # Tags para FinOps
