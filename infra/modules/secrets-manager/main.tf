@@ -7,12 +7,6 @@ locals {
     Team        = var.team
     ManagedBy   = var.managed_by
   }
-
-  # Extraer solo las keys de app_secrets (no sensibles) para usar en for_each
-  # Las keys no contienen información sensible, solo los valores
-  app_secrets_keys = {
-    for k in keys(var.app_secrets) : k => k
-  }
 }
 
 # Secreto principal para credenciales de base de datos
@@ -73,10 +67,11 @@ resource "aws_secretsmanager_secret_version" "api_keys" {
 }
 
 # Secreto genérico para otros valores sensibles
-# Usamos local.app_secrets_keys (no sensible) para for_each
+# Usamos nonsensitive(keys()) porque las keys no contienen información sensible
+# Solo los valores (secret_string) son sensibles, no los nombres de las keys
 # Los valores sensibles se acceden mediante var.app_secrets[each.key]
 resource "aws_secretsmanager_secret" "app_secrets" {
-  for_each = local.app_secrets_keys
+  for_each = toset(nonsensitive(keys(var.app_secrets)))
 
   name        = "${var.project_name}/${var.environment}/app/${each.key}"
   description = var.app_secrets[each.key].description != null ? var.app_secrets[each.key].description : "Secreto ${each.key} para ${var.project_name} en ambiente ${var.environment}"
@@ -93,10 +88,10 @@ resource "aws_secretsmanager_secret" "app_secrets" {
 }
 
 # Versión de los secretos genéricos
-# Usamos local.app_secrets_keys (no sensible) para for_each
+# Usamos nonsensitive(keys()) porque las keys no contienen información sensible
 # El valor sensible se accede mediante var.app_secrets[each.key].secret_string
 resource "aws_secretsmanager_secret_version" "app_secrets" {
-  for_each = local.app_secrets_keys
+  for_each = toset(nonsensitive(keys(var.app_secrets)))
 
   secret_id     = aws_secretsmanager_secret.app_secrets[each.key].id
   secret_string = var.app_secrets[each.key].secret_string
