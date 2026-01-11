@@ -73,7 +73,7 @@ if [ -n "${secrets_manager_secrets}" ]; then
     for secret_name in ${secrets_manager_secrets}; do
         # Normalizar nombre del archivo (reemplazar / por -)
         secret_file=$(echo "$secret_name" | sed 's/\//-/g')
-        output_file="$SECRETS_DIR/${secret_file}.json"
+        output_file="$SECRETS_DIR/$${secret_file}.json"
         
         if read_secret "$secret_name" "$output_file"; then
             # Si es el secreto de base de datos, extraer variables de entorno
