@@ -1,3 +1,14 @@
+locals {
+  common_tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    CostCenter  = var.cost_center
+    Owner       = var.owner
+    Team        = var.team
+    ManagedBy   = var.managed_by
+  }
+}
+
 # Application Load Balancer
 resource "aws_lb" "main" {
   name               = "${var.project_name}-${var.environment}-alb"
@@ -17,12 +28,13 @@ resource "aws_lb" "main" {
     delete = "15m"
   }
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-alb"
-    Environment = var.environment
-    Project     = var.project_name
-    Type        = "application-load-balancer"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-alb"
+      Type = "application-load-balancer"
+    }
+  )
 }
 
 # Target Group para el puerto de la aplicación
@@ -48,12 +60,13 @@ resource "aws_lb_target_group" "app" {
   # Dependencia explícita para asegurar orden de destroy
   depends_on = [aws_lb.main]
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-tg"
-    Environment = var.environment
-    Project     = var.project_name
-    Type        = "target-group"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-tg"
+      Type = "target-group"
+    }
+  )
 }
 
 # Listener HTTP (puerto 80) - redirige a HTTPS si está habilitado Y tiene certificado, sino al target group
@@ -87,11 +100,12 @@ resource "aws_lb_listener" "http" {
   # Dependencia explícita para asegurar orden de destroy
   depends_on = [aws_lb.main, aws_lb_target_group.app]
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-http-listener"
-    Environment = var.environment
-    Project     = var.project_name
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-http-listener"
+    }
+  )
 }
 
 # Listener HTTPS (puerto 443) - solo si está habilitado y tiene certificado
@@ -112,9 +126,10 @@ resource "aws_lb_listener" "https" {
   # Dependencia explícita para asegurar orden de destroy
   depends_on = [aws_lb.main, aws_lb_target_group.app]
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-https-listener"
-    Environment = var.environment
-    Project     = var.project_name
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-https-listener"
+    }
+  )
 }

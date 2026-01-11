@@ -257,3 +257,131 @@ Write-Host "Dashboard: https://console.aws.amazon.com/cloudwatch/home?region=us-
 4. **Revisa CloudWatch**: Abre el dashboard y verifica que aparezcan datos
 
 ¡Listo! Con esto deberías ver todas las métricas funcionando correctamente.
+
+---
+
+## 💰 Gestión de Costos: Etiquetas (Tags) para FinOps
+
+Las etiquetas (tags) en AWS son fundamentales para la gestión de costos y la implementación de prácticas FinOps. Permiten rastrear, analizar y optimizar el gasto en recursos de AWS.
+
+### 🏷️ Tags Recomendados para FinOps
+
+Para una gestión efectiva de costos, todos los recursos deben incluir las siguientes etiquetas:
+
+| Tag | Descripción | Ejemplo |
+|-----|-------------|---------|
+| `Project` | Nombre del proyecto | `genius` |
+| `Environment` | Ambiente de despliegue | `dev`, `qa`, `prod` |
+| `CostCenter` | Centro de costo o departamento | `engineering`, `marketing`, `operations` |
+| `Owner` | Propietario o equipo responsable | `backend-team`, `devops-team` |
+| `Team` | Equipo que gestiona el recurso | `platform-engineering` |
+| `ManagedBy` | Herramienta de gestión (opcional) | `terraform` |
+| `CreatedDate` | Fecha de creación (opcional) | `2024-01-15` |
+
+### 📊 Beneficios de las Etiquetas para FinOps
+
+1. **Asignación de Costos**: Permite asignar costos por proyecto, equipo o departamento
+2. **Reportes Personalizados**: Genera reportes de costos filtrados por cualquier tag
+3. **Optimización**: Identifica recursos no utilizados o sobredimensionados
+4. **Budget Alerts**: Configura alertas de presupuesto basadas en tags
+5. **Chargeback/Showback**: Asigna costos a diferentes equipos o proyectos
+
+### 🔍 Cómo Verificar las Etiquetas
+
+#### En la Consola de AWS:
+
+1. Ve a **AWS Cost Explorer** → **Costs by resource**
+2. Filtra por tags para ver costos por:
+   - Project
+   - Environment
+   - CostCenter
+   - Team
+
+#### Usando AWS CLI:
+
+```powershell
+# Listar recursos con sus tags
+aws ec2 describe-instances --query 'Reservations[*].Instances[*].[InstanceId,Tags]' --output table
+
+# Filtrar instancias por tag Environment=dev
+aws ec2 describe-instances --filters "Name=tag:Environment,Values=dev" --query 'Reservations[*].Instances[*].[InstanceId,State.Name]' --output table
+
+# Ver costos por tag en Cost Explorer (requiere configuración previa)
+aws ce get-cost-and-usage --time-period Start=2024-01-01,End=2024-01-31 --granularity MONTHLY --metrics BlendedCost --group-by Type=DIMENSION,Key=SERVICE --group-by Type=TAG,Key=Environment
+```
+
+### 📝 Implementación de Tags en Terraform
+
+Todos los recursos de Terraform en este proyecto incluyen tags estándar:
+
+```hcl
+tags = {
+  Name        = "${var.project_name}-${var.environment}-resource-name"
+  Environment = var.environment
+  Project     = var.project_name
+}
+```
+
+Para añadir tags adicionales de FinOps, puedes:
+
+1. **Añadir variables en `variables.tf`**:
+```hcl
+variable "cost_center" {
+  description = "Centro de costo para FinOps"
+  type        = string
+  default     = "engineering"
+}
+
+variable "team" {
+  description = "Equipo responsable del recurso"
+  type        = string
+  default     = "platform-engineering"
+}
+
+variable "owner" {
+  description = "Propietario del recurso"
+  type        = string
+  default     = "devops-team"
+}
+```
+
+2. **Incluir en los tags de los recursos**:
+```hcl
+tags = merge(
+  {
+    Name        = "${var.project_name}-${var.environment}-resource-name"
+    Environment = var.environment
+    Project     = var.project_name
+  },
+  {
+    CostCenter  = var.cost_center
+    Team        = var.team
+    Owner       = var.owner
+    ManagedBy   = "terraform"
+  }
+)
+```
+
+### 🎯 Mejores Prácticas
+
+1. **Consistencia**: Usa las mismas etiquetas en todos los recursos
+2. **Valores Estándar**: Define valores permitidos para cada tag (evita typos)
+3. **Automation**: Aplica tags automáticamente mediante Terraform, no manualmente
+4. **Documentación**: Documenta qué tags se usan y su propósito
+5. **Validación**: Usa políticas de AWS para requerir tags obligatorios
+
+### 📈 Reportes de Costos con Tags
+
+En AWS Cost Explorer puedes crear reportes personalizados:
+
+1. Ve a **Cost Explorer** → **Reports** → **Create new report**
+2. Agrupa por tags: `Project`, `Environment`, `CostCenter`
+3. Configura alertas cuando los costos excedan umbrales
+4. Exporta reportes mensuales para análisis
+
+### ⚠️ Importante
+
+- Las etiquetas deben aplicarse **desde el inicio** del proyecto
+- Algunos recursos heredan tags (ej: instancias EC2 del Launch Template)
+- AWS Cost Explorer puede tardar 24-48 horas en reflejar cambios en tags
+- Las etiquetas son case-sensitive: usa convenciones consistentes

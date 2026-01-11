@@ -4,6 +4,15 @@ data "aws_region" "current" {}
 # Extraer el nombre del ALB desde el ARN
 locals {
   alb_name = split("/", var.alb_arn)[length(split("/", var.alb_arn)) - 1]
+  
+  common_tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    CostCenter  = var.cost_center
+    Owner       = var.owner
+    Team        = var.team
+    ManagedBy   = var.managed_by
+  }
 }
 
 # ==========================================
@@ -28,12 +37,13 @@ resource "aws_cloudwatch_metric_alarm" "unhealthy_hosts" {
     LoadBalancer = var.alb_arn
   }
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-unhealthy-hosts-alarm"
-    Environment = var.environment
-    Project     = var.project_name
-    Type        = "cloudwatch-alarm"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-unhealthy-hosts-alarm"
+      Type = "cloudwatch-alarm"
+    }
+  )
 }
 
 # Alarma 2: Errores 5xx
@@ -53,12 +63,13 @@ resource "aws_cloudwatch_metric_alarm" "http_5xx_errors" {
     LoadBalancer = var.alb_arn
   }
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-http-5xx-errors-alarm"
-    Environment = var.environment
-    Project     = var.project_name
-    Type        = "cloudwatch-alarm"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-http-5xx-errors-alarm"
+      Type = "cloudwatch-alarm"
+    }
+  )
 }
 
 # Alarma 3: CPU Alta
@@ -78,12 +89,13 @@ resource "aws_cloudwatch_metric_alarm" "high_cpu" {
     AutoScalingGroupName = var.asg_name
   }
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-high-cpu-alarm"
-    Environment = var.environment
-    Project     = var.project_name
-    Type        = "cloudwatch-alarm"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-high-cpu-alarm"
+      Type = "cloudwatch-alarm"
+    }
+  )
 }
 
 # ==========================================

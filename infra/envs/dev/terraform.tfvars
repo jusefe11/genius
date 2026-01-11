@@ -54,3 +54,9 @@ desired_capacity = 2  # Mantiene 2 instancias deseadas
 max_size         = 5  # Mantiene máximo de 5 instancias
 # trigger pipeline
 
+# Tags para FinOps (Gestión de Costos)
+cost_center = "engineering"
+owner       = "platform-team"
+team        = "platform-engineering"
+managed_by  = "terraform"
+

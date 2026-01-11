@@ -1,3 +1,14 @@
+locals {
+  common_tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    CostCenter  = var.cost_center
+    Owner       = var.owner
+    Team        = var.team
+    ManagedBy   = var.managed_by
+  }
+}
+
 # IAM Role para SSM Session Manager
 resource "aws_iam_role" "ssm_role" {
   name = "${var.project_name}-${var.environment}-ssm-role"
@@ -15,11 +26,12 @@ resource "aws_iam_role" "ssm_role" {
     ]
   })
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-ssm-role"
-    Environment = var.environment
-    Project     = var.project_name
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-ssm-role"
+    }
+  )
 }
 
 # Política administrada de AWS para SSM Session Manager
@@ -33,11 +45,12 @@ resource "aws_iam_instance_profile" "ssm_instance_profile" {
   name = "${var.project_name}-${var.environment}-ssm-profile"
   role = aws_iam_role.ssm_role.name
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-ssm-profile"
-    Environment = var.environment
-    Project     = var.project_name
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-ssm-profile"
+    }
+  )
 }
 
 resource "aws_launch_template" "app" {
@@ -64,18 +77,20 @@ resource "aws_launch_template" "app" {
 
   tag_specifications {
     resource_type = "instance"
-    tags = {
-      Name        = "${var.project_name}-${var.environment}-app"
-      Environment = var.environment
-      Project     = var.project_name
-    }
+    tags = merge(
+      local.common_tags,
+      {
+        Name = "${var.project_name}-${var.environment}-app"
+      }
+    )
   }
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-launch-template"
-    Environment = var.environment
-    Project     = var.project_name
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-launch-template"
+    }
+  )
 }
 
 resource "aws_autoscaling_group" "app" {
@@ -107,6 +122,30 @@ resource "aws_autoscaling_group" "app" {
   tag {
     key                 = "Project"
     value               = var.project_name
+    propagate_at_launch = true
+  }
+
+  tag {
+    key                 = "CostCenter"
+    value               = var.cost_center
+    propagate_at_launch = true
+  }
+
+  tag {
+    key                 = "Owner"
+    value               = var.owner
+    propagate_at_launch = true
+  }
+
+  tag {
+    key                 = "Team"
+    value               = var.team
+    propagate_at_launch = true
+  }
+
+  tag {
+    key                 = "ManagedBy"
+    value               = var.managed_by
     propagate_at_launch = true
   }
 }

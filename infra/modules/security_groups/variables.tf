@@ -60,3 +60,28 @@ variable "enable_cache" {
   type        = bool
   default     = false
 }
+
+# Tags para FinOps
+variable "cost_center" {
+  description = "Centro de costo para gestión FinOps"
+  type        = string
+  default     = "engineering"
+}
+
+variable "owner" {
+  description = "Propietario o equipo responsable del recurso"
+  type        = string
+  default     = "platform-team"
+}
+
+variable "team" {
+  description = "Equipo que gestiona el recurso"
+  type        = string
+  default     = "platform-engineering"
+}
+
+variable "managed_by" {
+  description = "Herramienta de gestión de infraestructura"
+  type        = string
+  default     = "terraform"
+}

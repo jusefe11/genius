@@ -8,6 +8,12 @@ module "vpc" {
   public_subnet_cidrs  = var.public_subnet_cidrs
   private_subnet_cidrs = var.private_subnet_cidrs
   availability_zones   = var.availability_zones
+
+  # Tags para FinOps
+  cost_center = var.cost_center
+  owner       = var.owner
+  team        = var.team
+  managed_by  = var.managed_by
 }
 
 module "security_groups" {
@@ -22,6 +28,12 @@ module "security_groups" {
   enable_ssh        = var.enable_ssh
   allowed_ssh_cidrs = var.allowed_ssh_cidrs
   enable_redis      = var.enable_redis
+
+  # Tags para FinOps
+  cost_center = var.cost_center
+  owner       = var.owner
+  team        = var.team
+  managed_by  = var.managed_by
 }
 
 # Data source para obtener la AMI más reciente de Amazon Linux 2 si no se especifica
@@ -55,6 +67,12 @@ module "alb" {
   enable_https     = var.enable_https
   certificate_arn  = var.certificate_arn
   enable_deletion_protection = false # Desactivado para dev
+
+  # Tags para FinOps
+  cost_center = var.cost_center
+  owner       = var.owner
+  team        = var.team
+  managed_by  = var.managed_by
 }
 
 # Módulo Auto Scaling Group
@@ -73,6 +91,12 @@ module "autoscaling" {
   min_size          = var.min_size
   max_size          = var.max_size
   desired_capacity  = var.desired_capacity
+
+  # Tags para FinOps
+  cost_center = var.cost_center
+  owner       = var.owner
+  team        = var.team
+  managed_by  = var.managed_by
 }
 
 # Módulo CloudWatch (Monitoreo)
@@ -87,4 +111,10 @@ module "cloudwatch" {
   asg_name           = module.autoscaling.autoscaling_group_name
   cpu_threshold      = 80
   error_5xx_threshold = 5
+
+  # Tags para FinOps
+  cost_center = var.cost_center
+  owner       = var.owner
+  team        = var.team
+  managed_by  = var.managed_by
 }

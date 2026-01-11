@@ -1,23 +1,36 @@
+locals {
+  common_tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    CostCenter  = var.cost_center
+    Owner       = var.owner
+    Team        = var.team
+    ManagedBy   = var.managed_by
+  }
+}
+
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
   enable_dns_support   = true
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-vpc"
-    Environment = var.environment
-    Project     = var.project_name
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-vpc"
+    }
+  )
 }
 
 resource "aws_internet_gateway" "main" {
   vpc_id = aws_vpc.main.id
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-igw"
-    Environment = var.environment
-    Project     = var.project_name
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-igw"
+    }
+  )
 }
 
 resource "aws_subnet" "public" {
@@ -28,12 +41,13 @@ resource "aws_subnet" "public" {
 
   map_public_ip_on_launch = true
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-public-subnet-${count.index + 1}"
-    Environment = var.environment
-    Project     = var.project_name
-    Type        = "public"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-public-subnet-${count.index + 1}"
+      Type = "public"
+    }
+  )
 }
 
 resource "aws_subnet" "private" {
@@ -42,12 +56,13 @@ resource "aws_subnet" "private" {
   cidr_block        = var.private_subnet_cidrs[count.index]
   availability_zone = var.availability_zones[count.index]
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-private-subnet-${count.index + 1}"
-    Environment = var.environment
-    Project     = var.project_name
-    Type        = "private"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-private-subnet-${count.index + 1}"
+      Type = "private"
+    }
+  )
 }
 
 resource "aws_route_table" "public" {
@@ -61,11 +76,12 @@ resource "aws_route_table" "public" {
   # Dependencia explícita: la ruta pública debe destruirse antes que el Internet Gateway
   depends_on = [aws_internet_gateway.main]
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-public-rt"
-    Environment = var.environment
-    Project     = var.project_name
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-public-rt"
+    }
+  )
 }
 
 resource "aws_route_table_association" "public" {
@@ -82,11 +98,12 @@ resource "aws_eip" "nat" {
   # Dependencia explícita del Internet Gateway para evitar error "Network has some mapped public address(es)"
   depends_on = [aws_internet_gateway.main]
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-nat-eip-${count.index + 1}"
-    Environment = var.environment
-    Project     = var.project_name
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-nat-eip-${count.index + 1}"
+    }
+  )
 }
 
 # NAT Gateway para las subredes privadas
@@ -98,11 +115,12 @@ resource "aws_nat_gateway" "main" {
   # Dependencia explícita del Internet Gateway para orden correcto de destrucción
   depends_on = [aws_internet_gateway.main]
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-nat-${count.index + 1}"
-    Environment = var.environment
-    Project     = var.project_name
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-nat-${count.index + 1}"
+    }
+  )
 }
 
 # Tabla de ruteo para subredes privadas
@@ -120,11 +138,12 @@ resource "aws_route_table" "private" {
   # Dependencia explícita: las rutas privadas deben destruirse antes que los NAT Gateways
   depends_on = [aws_nat_gateway.main]
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-private-rt-${count.index + 1}"
-    Environment = var.environment
-    Project     = var.project_name
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-private-rt-${count.index + 1}"
+    }
+  )
 }
 
 # Asociación de tabla de ruteo con subredes privadas

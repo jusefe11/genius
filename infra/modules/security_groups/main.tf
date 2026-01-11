@@ -1,3 +1,14 @@
+locals {
+  common_tags = {
+    Environment = var.environment
+    Project     = var.project_name
+    CostCenter  = var.cost_center
+    Owner       = var.owner
+    Team        = var.team
+    ManagedBy   = var.managed_by
+  }
+}
+
 # Security Group para Application Load Balancer (ALB)
 # Permite HTTP/HTTPS desde Internet según requerimientos
 resource "aws_security_group" "alb" {
@@ -45,12 +56,13 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-alb-sg"
-    Environment = var.environment
-    Project     = var.project_name
-    Type        = "load-balancer"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-alb-sg"
+      Type = "load-balancer"
+    }
+  )
 }
 
 # Alias para compatibilidad con código existente
@@ -95,12 +107,13 @@ resource "aws_security_group" "web" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-web-sg"
-    Environment = var.environment
-    Project     = var.project_name
-    Type        = "web"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-web-sg"
+      Type = "web"
+    }
+  )
 }
 
 # Security Group para servidores de aplicación
@@ -148,12 +161,13 @@ resource "aws_security_group" "app" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-app-sg"
-    Environment = var.environment
-    Project     = var.project_name
-    Type        = "application"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-app-sg"
+      Type = "application"
+    }
+  )
 }
 
 # Security Group para bases de datos
@@ -190,13 +204,14 @@ resource "aws_security_group" "db" {
     self            = true
   }
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-db-sg"
-    Environment = var.environment
-    Project     = var.project_name
-    Type        = "database"
-    Engine      = var.db_engine
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name   = "${var.project_name}-${var.environment}-db-sg"
+      Type   = "database"
+      Engine = var.db_engine
+    }
+  )
 }
 
 # Security Group para Redis/ElastiCache (opcional)
@@ -242,13 +257,14 @@ resource "aws_security_group" "redis" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-redis-sg"
-    Environment = var.environment
-    Project     = var.project_name
-    Type        = "cache"
-    Engine      = "redis"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name   = "${var.project_name}-${var.environment}-redis-sg"
+      Type   = "cache"
+      Engine = "redis"
+    }
+  )
 }
 
 # Security Group para Bastion Host (SSH jump server)
@@ -277,11 +293,12 @@ resource "aws_security_group" "bastion" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-bastion-sg"
-    Environment = var.environment
-    Project     = var.project_name
-    Type        = "bastion"
-  }
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-bastion-sg"
+      Type = "bastion"
+    }
+  )
 }
 

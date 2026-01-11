@@ -52,3 +52,9 @@ instance_type = "t3.micro"  # Free Tier elegible
 min_size         = 2  # Mantiene mínimo de 2 instancias
 desired_capacity = 2  # Mantiene 2 instancias deseadas
 max_size         = 5  # Cambiado de 10 a 5 para igualar con otros ambientes
+
+# Tags para FinOps (Gestión de Costos)
+cost_center = "engineering"
+owner       = "platform-team"
+team        = "platform-engineering"
+managed_by  = "terraform"
