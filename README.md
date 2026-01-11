@@ -20,18 +20,56 @@ genius/
 ├── infra/
 │   ├── modules/              # Módulos reutilizables
 │   │   ├── vpc/              # Red (VPC, subredes, NAT Gateway)
+│   │   │   ├── main.tf
+│   │   │   ├── variables.tf
+│   │   │   └── outputs.tf
 │   │   ├── security_groups/  # Security Groups
+│   │   │   ├── main.tf
+│   │   │   ├── variables.tf
+│   │   │   └── outputs.tf
 │   │   ├── alb/              # Application Load Balancer
+│   │   │   ├── main.tf
+│   │   │   ├── variables.tf
+│   │   │   └── outputs.tf
 │   │   ├── autoscaling/      # Auto Scaling Group y EC2
+│   │   │   ├── main.tf
+│   │   │   ├── variables.tf
+│   │   │   ├── outputs.tf
+│   │   │   └── user_data.sh
 │   │   ├── cloudwatch/       # Monitoreo y alarmas
+│   │   │   ├── main.tf
+│   │   │   ├── variables.tf
+│   │   │   └── outputs.tf
 │   │   └── secrets-manager/  # Gestión de secretos
+│   │       ├── main.tf
+│   │       ├── variables.tf
+│   │       └── outputs.tf
 │   ├── backend-setup/        # Backend remoto (S3 + DynamoDB)
-│   └── envs/                 # Configuración por ambiente
-│       ├── dev/
-│       ├── qa/
-│       └── prod/
-├── app/                      # Aplicación y Dockerfile
-└── .github/workflows/        # CI/CD pipelines
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   ├── envs/                 # Configuración por ambiente
+│   │   ├── dev/
+│   │   │   ├── main.tf
+│   │   │   ├── variables.tf
+│   │   │   ├── terraform.tfvars
+│   │   │   ├── provider.tf
+│   │   │   ├── backend.tf
+│   │   │   └── outputs.tf
+│   │   ├── qa/               # Misma estructura que dev
+│   │   └── prod/             # Misma estructura que dev
+│   ├── provider.tf
+│   ├── backend.tf
+│   └── variables.tf
+├── app/                      # Aplicación
+│   ├── Dockerfile
+│   ├── src/
+│   └── tests/
+├── .github/
+│   └── workflows/
+│       └── terraform-pipeline.yml
+├── .gitignore
+└── README.md
 ```
 
 ## Arquitectura
@@ -294,7 +332,6 @@ Al ejecutar `terraform apply`, se crean aproximadamente:
 
 ## Características Implementadas
 
-- ✅ **Modularidad**: Módulos reutilizables entre ambientes
 - ✅ **Modularidad**: Módulos reutilizables entre ambientes (dev, qa, prod)
 - ✅ **Seguridad**: Subredes privadas, Security Groups restrictivos, Secrets Manager, SSM Session Manager
 - ✅ **Alta Disponibilidad**: Multi-AZ, Auto Scaling (2-2-5 por defecto), Health Checks
