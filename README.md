@@ -26,10 +26,14 @@ genius/
 │   │   │   ├── variables.tf           # Variables de ASG
 │   │   │   ├── outputs.tf             # Outputs del ASG
 │   │   │   └── user_data.sh           # Script de inicialización de instancias
-│   │   └── cloudwatch/                # Módulo de CloudWatch (Monitoreo)
-│   │       ├── main.tf                # Alarmas y Dashboard de CloudWatch
-│   │       ├── variables.tf           # Variables de configuración de CloudWatch
-│   │       └── outputs.tf             # Outputs de Alarmas y Dashboard
+│   │   ├── cloudwatch/                # Módulo de CloudWatch (Monitoreo)
+│   │   │   ├── main.tf                # Alarmas y Dashboard de CloudWatch
+│   │   │   ├── variables.tf           # Variables de configuración de CloudWatch
+│   │   │   └── outputs.tf             # Outputs de Alarmas y Dashboard
+│   │   └── secrets-manager/           # Módulo de AWS Secrets Manager
+│   │       ├── main.tf                # Secretos de base de datos, API keys y genéricos
+│   │       ├── variables.tf           # Variables de configuración de secretos
+│   │       └── outputs.tf             # Outputs de ARNs y nombres de secretos
 │   ├── backend-setup/                 # Setup del Backend Remoto de Terraform
 │   │   ├── main.tf                    # Bucket S3 y tabla DynamoDB para estado remoto
 │   │   ├── variables.tf               # Variables del backend setup
@@ -53,7 +57,11 @@ genius/
 │   └── workflows/
 │       └── terraform-pipeline.yml     # Pipeline de CI/CD para Terraform
 ├── README.md                          # Este archivo - Documentación principal
-└── TABLA_DESPLIEGUE_DEV.md            # Tabla detallada de recursos para ambiente DEV
+├── TABLA_DESPLIEGUE_DEV.md            # Tabla detallada de recursos para ambiente DEV
+└── infra/
+    ├── GUIA_SECRETS_MANAGER.md        # Guía completa de uso de AWS Secrets Manager
+    ├── EXPLICACION_RECURSOS_POR_AMBIENTE.md  # Explicación de variación de recursos
+    └── ...
 ```
 
 ## Arquitectura de la Infraestructura
@@ -86,6 +94,7 @@ EC2 Instances [Subredes Privadas]
 - ✅ **Multi-AZ**: Alta disponibilidad en al menos 2 zonas de disponibilidad
 - ✅ **Auto Scaling**: Escalado automático basado en carga
 - ✅ **Health Checks**: Monitoreo continuo del estado de las instancias
+- ✅ **AWS Secrets Manager**: Gestión centralizada y segura de credenciales y secretos
 
 ### Características de Monitoreo
 
@@ -151,11 +160,22 @@ La siguiente tabla detalla todos los recursos de AWS que se crean al ejecutar `t
 | 28 | CloudWatch | `aws_cloudwatch_metric_alarm.high_cpu` | CloudWatch Alarm | 1 | Alarma de CPU alto |
 | 29 | CloudWatch | `aws_cloudwatch_dashboard.main` | CloudWatch Dashboard | 1 | Dashboard de monitoreo de aplicación |
 
+### 🔐 SECRETOS Y GESTIÓN DE CREDENCIALES
+
+| # | Módulo | Recurso AWS | Tipo | Cantidad | Descripción |
+|---|--------|-------------|------|----------|-------------|
+| 30 | Secrets Manager | `aws_secretsmanager_secret.db_credentials` | Secret | 0-1 | Secreto de credenciales de base de datos (opcional) |
+| 31 | Secrets Manager | `aws_secretsmanager_secret_version.db_credentials` | Secret Version | 0-1 | Versión del secreto de BD |
+| 32 | Secrets Manager | `aws_secretsmanager_secret.api_keys` | Secret | 0-1 | Secreto de API Keys (opcional) |
+| 33 | Secrets Manager | `aws_secretsmanager_secret_version.api_keys` | Secret Version | 0-1 | Versión del secreto de API Keys |
+| 34 | Secrets Manager | `aws_secretsmanager_secret.app_secrets` | Secret | 0-N | Secretos genéricos personalizados |
+| 35 | Secrets Manager | `aws_secretsmanager_secret_version.app_secrets` | Secret Version | 0-N | Versiones de secretos genéricos |
+
 ### 📊 DATA SOURCES
 
 | # | Módulo | Recurso AWS | Tipo | Cantidad | Descripción |
 |---|--------|-------------|------|----------|-------------|
-| 30 | Env | `data.aws_ami.amazon_linux` | Data Source | 0-1 | Obtiene AMI más reciente (si ami_id vacío) |
+| 36 | Env | `data.aws_ami.amazon_linux` | Data Source | 0-1 | Obtiene AMI más reciente (si ami_id vacío) |
 
 ### Resumen por Categoría
 
@@ -167,8 +187,9 @@ La siguiente tabla detalla todos los recursos de AWS que se crean al ejecutar `t
 | **Auto Scaling** | 4 | 4 | Launch Template + ASG + 2 políticas |
 | **Instancias EC2** | 1 | 20 | Variable según configuración del ASG |
 | **CloudWatch** | 4 | 4 | 3 Alarmas + 1 Dashboard |
+| **Secrets Manager** | 0 | 2+N | Secretos opcionales (BD, API keys, genéricos) |
 | **Data Sources** | 0 | 1 | Solo si no se especifica AMI ID |
-| **TOTAL** | **26** | **49** | Depende de configuración y opciones habilitadas |
+| **TOTAL** | **26** | **52+** | Depende de configuración y opciones habilitadas |
 
 ### Cantidad de Recursos por Ambiente
 
@@ -348,6 +369,63 @@ Egress:
 - `target_group_arn`: ARN del Target Group (para asociar con ASG)
 - `alb_arn`: ARN completo del ALB (para CloudWatch y otros servicios)
 
+### 5. Módulo Secrets Manager (`infra/modules/secrets-manager/`)
+
+**Propósito**: Gestiona secretos de forma segura usando AWS Secrets Manager (credenciales de base de datos, API keys, y secretos genéricos).
+
+**Recursos creados**:
+
+| Recurso | Descripción | Configuración |
+|---------|-------------|---------------|
+| `aws_secretsmanager_secret.db_credentials` | Secreto de credenciales de BD | Opcional, solo si `create_db_secret = true` |
+| `aws_secretsmanager_secret_version.db_credentials` | Versión del secreto de BD | Contiene: username, password, host, port, database, engine |
+| `aws_secretsmanager_secret.api_keys` | Secreto de API Keys | Opcional, solo si `create_api_keys_secret = true` |
+| `aws_secretsmanager_secret_version.api_keys` | Versión del secreto de API Keys | Contiene mapa clave-valor de API keys |
+| `aws_secretsmanager_secret.app_secrets` | Secretos genéricos | Personalizables, múltiples secretos permitidos |
+| `aws_secretsmanager_secret_version.app_secrets` | Versiones de secretos genéricos | Contenido personalizado (JSON, texto, etc.) |
+
+**Tipos de Secretos Soportados**:
+
+1. **Secreto de Base de Datos** (`database/credentials`):
+   - Almacena credenciales completas: username, password, host, port, database, engine
+   - Formato JSON estructurado
+   - Automáticamente descargado en las instancias en `/opt/app/secrets/db.env`
+
+2. **Secreto de API Keys** (`app/api-keys`):
+   - Almacena múltiples API keys en un solo secreto
+   - Formato JSON con clave-valor
+   - Automáticamente descargado en `/opt/app/secrets/api-keys.env`
+
+3. **Secretos Genéricos** (`app/*`):
+   - Permite crear secretos personalizados con contenido arbitrario
+   - Útil para JWT secrets, claves de encriptación, configuraciones sensibles, etc.
+
+**Integración con Instancias EC2**:
+
+- **Permisos IAM**: Las instancias tienen permisos para leer secretos específicos del proyecto/ambiente
+- **Descarga automática**: El `user_data.sh` descarga secretos al iniciar cada instancia
+- **Ubicación**: Secretos almacenados en `/opt/app/secrets/` con permisos restrictivos (600)
+- **Formatos disponibles**: JSON y archivos `.env` para variables de entorno
+
+**Variables principales**:
+- `create_db_secret`: Habilitar creación de secreto de BD (default: false)
+- `db_username`, `db_password`, `db_host`, `db_port`, `db_name`, `db_engine`: Credenciales de BD
+- `create_api_keys_secret`: Habilitar creación de secreto de API Keys (default: false)
+- `api_keys`: Mapa de API keys (clave-valor)
+- `app_secrets`: Mapa de secretos genéricos con descripción y contenido
+- `secrets_manager_kms_key_ids`: ARNs de claves KMS para cifrado (opcional)
+
+**Outputs**:
+- `db_secret_arn`, `db_secret_name`: ARN y nombre del secreto de BD
+- `api_keys_secret_arn`, `api_keys_secret_name`: ARN y nombre del secreto de API Keys
+- `app_secrets_arns`, `app_secrets_names`: Mapas de ARNs y nombres de secretos genéricos
+- `all_secret_arns`: Lista de todos los ARNs de secretos creados
+- `secrets_prefix`: Prefijo común para todos los secretos (`{project}/{environment}`)
+
+**Documentación adicional**: Ver `infra/GUIA_SECRETS_MANAGER.md` para guía completa de uso.
+
+### 6. Módulo Autoscaling (`infra/modules/autoscaling/`)
+
 ### 4. Módulo Autoscaling (`infra/modules/autoscaling/`)
 
 **Propósito**: Crea un Auto Scaling Group con Launch Template para gestionar instancias EC2.
@@ -509,7 +587,7 @@ El dashboard incluye 4 widgets principales:
 - ✅ Versionado para recuperación de estados anteriores
 - ⚠️ Los recursos tienen `prevent_destroy = true` por defecto para evitar eliminaciones accidentales
 
-### 7. Configuración por Ambiente (`infra/envs/{dev|qa|prod}/`)
+### 9. Configuración por Ambiente (`infra/envs/{dev|qa|prod}/`)
 
 Cada ambiente tiene su propia configuración que orquesta todos los módulos:
 
@@ -520,11 +598,13 @@ Cada ambiente tiene su propia configuración que orquesta todos los módulos:
 2. Módulo Security Groups (usa outputs de VPC)
    ↓ Outputs: security_group_ids
 3. Data Source: aws_ami (obtiene AMI más reciente si no se especifica)
-4. Módulo ALB (usa outputs de VPC y Security Groups)
+4. Módulo Secrets Manager (crea secretos de BD, API keys, genéricos)
+   ↓ Outputs: secret ARNs, secret names
+5. Módulo ALB (usa outputs de VPC y Security Groups)
    ↓ Outputs: target_group_arn, alb_arn
-5. Módulo Autoscaling (usa todos los outputs anteriores)
+6. Módulo Autoscaling (usa outputs anteriores + secret ARNs para permisos)
    ↓ Outputs: autoscaling_group_name
-6. Módulo CloudWatch (usa outputs de ALB y Autoscaling)
+7. Módulo CloudWatch (usa outputs de ALB y Autoscaling)
    ↓ Outputs: alarm ARNs, dashboard URL
 ```
 
@@ -533,6 +613,8 @@ Define todas las variables necesarias para el ambiente, incluyendo:
 - Variables de red (VPC, subredes, AZs)
 - Variables de configuración de módulos
 - Variables específicas del ambiente
+- Variables de Secrets Manager (credenciales de BD, API keys, secretos genéricos)
+- Variables de KMS para cifrado de secretos (opcional)
 
 #### **terraform.tfvars** - Valores Específicos
 Contiene los valores reales para cada ambiente. Ejemplo para dev:
@@ -568,6 +650,7 @@ Exporta información útil después del despliegue:
 - DNS del ALB
 - IDs de VPC y subredes
 - Nombres de recursos importantes
+- ARNs y nombres de secretos de Secrets Manager
 
 ## Flujo de Integración entre Módulos
 
@@ -602,13 +685,26 @@ El siguiente diagrama muestra cómo los módulos se integran y dependen unos de 
                 └───────────────┬───────────────────┘
                                │
                                ▼
-                ┌──────────────────────────────┐
-                │   Módulo Autoscaling         │
-                │  Inputs: ami_id (o data),    │
-                │          subnet_ids (priv),  │
-                │          [app_sg_id],        │
-                │          target_group_arn    │
-                │  Outputs: asg_name, etc.     │
+┌──────────────────────────────┐    ┌──────────────────────────────┐
+│     Módulo ALB               │    │  Módulo Secrets Manager      │
+│  Inputs: vpc_id,             │    │  Inputs: project_name,       │
+│          public_subnet_ids,  │    │          environment,        │
+│          [alb_sg_id]         │    │          db credentials,     │
+│  Outputs: target_group_arn   │    │          api_keys, etc.      │
+└──────────────┬───────────────┘    │  Outputs: secret ARNs,       │
+               │                    │          secret names        │
+                └───────────────┬───┴───────────────┬───────────────┘
+                               │                   │
+                               ▼                   ▼
+                ┌──────────────────────────────────────────────┐
+                │   Módulo Autoscaling                         │
+                │  Inputs: ami_id (o data),                    │
+                │          subnet_ids (priv),                  │
+                │          [app_sg_id],                        │
+                │          target_group_arn,                   │
+                │          secrets_manager_arns  ←─────────────┤
+                │          secrets_manager_secret_names        │
+                │  Outputs: asg_name, etc.                     │
                 └──────────────┬───────────────┘
                                │
                                │
@@ -678,8 +774,18 @@ EC2 Instances
 - HTTPS: Deshabilitado (solo HTTP)
 - Deletion Protection: Desactivado
 
-**Base de Datos (para futuras implementaciones):**
+**Base de Datos:**
 - Puerto DB: `3306` (MySQL)
+
+**Secrets Manager:**
+- Configuración de secretos disponible pero deshabilitada por defecto
+- Para habilitar: Ver `infra/GUIA_SECRETS_MANAGER.md`
+- Ejemplo de configuración comentada en `terraform.tfvars`
+
+**Secrets Manager:**
+- Configuración de secretos disponible pero deshabilitada por defecto
+- Para habilitar: Ver `infra/GUIA_SECRETS_MANAGER.md`
+- Ejemplo de configuración comentada en `terraform.tfvars`
 
 ### QA (Quality Assurance)
 
@@ -699,6 +805,11 @@ EC2 Instances
 **Base de Datos:**
 - Puerto DB: `3306` (MySQL)
 
+**Secrets Manager:**
+- Configuración de secretos disponible pero deshabilitada por defecto
+- Para habilitar: Ver `infra/GUIA_SECRETS_MANAGER.md`
+- Ejemplo de configuración comentada en `terraform.tfvars`
+
 ### Producción (prod)
 
 **Red:**
@@ -717,6 +828,11 @@ EC2 Instances
 
 **Base de Datos:**
 - Puerto DB: `3306` (MySQL)
+
+**Secrets Manager:**
+- Configuración de secretos disponible pero deshabilitada por defecto
+- Para habilitar: Ver `infra/GUIA_SECRETS_MANAGER.md`
+- Ejemplo de configuración comentada en `terraform.tfvars`
 
 ## Requisitos Previos
 
@@ -1108,6 +1224,13 @@ allowed_web_cidrs = var.allowed_web_cidrs
 - Alarmas configuradas para instancias no saludables, errores 5xx y CPU alto
 - Métricas automáticas de ALB y EC2 sin configuración adicional
 
+### ✅ Gestión de Secretos
+- AWS Secrets Manager integrado para almacenamiento seguro de credenciales
+- Cifrado automático con KMS (clave por defecto o personalizada)
+- Descarga automática de secretos en instancias EC2 al iniciar
+- Soporte para credenciales de BD, API keys y secretos genéricos
+- Integración IAM con permisos granulares (solo lectura de secretos específicos)
+
 ### ✅ Optimizaciones de Destroy
 - Timeouts configurados en todos los recursos críticos para evitar bloqueos
 - Dependencias explícitas (`depends_on`) para orden correcto de destrucción
@@ -1127,12 +1250,18 @@ allowed_web_cidrs = var.allowed_web_cidrs
 1. ✅ **Backend S3 + DynamoDB**: Backend remoto configurado (`infra/backend-setup/`)
 2. ✅ **CloudWatch Alarms y Dashboard**: Monitoreo completo implementado (`infra/modules/cloudwatch/`)
 3. ✅ **Optimizaciones de Destroy**: Timeouts y dependencias configuradas en ALB y VPC
+4. ✅ **AWS Secrets Manager**: Gestión segura de secretos implementada (`infra/modules/secrets-manager/`)
+   - Secreto de credenciales de base de datos
+   - Secreto de API keys
+   - Secretos genéricos personalizables
+   - Integración automática con instancias EC2
 
 ### Mejoras Futuras Recomendadas
 
 1. **SSL/TLS**: Configurar certificados ACM y habilitar HTTPS en producción (certificate_arn ya soportado)
 2. **WAF**: Agregar AWS WAF al ALB para protección adicional contra ataques
-3. **RDS**: Desplegar base de datos RDS/Aurora usando el `db-sg` ya creado
+3. **RDS**: Desplegar base de datos RDS/Aurora usando el `db-sg` ya creado (puede usar Secrets Manager para credenciales)
+4. **Rotación de Secretos**: Habilitar rotación automática de secretos en Secrets Manager (requiere Lambda function)
 4. **CI/CD**: Integrar con pipelines de CI/CD (ya hay estructura en `.github/workflows/`)
 5. **Application Logs**: Configurar CloudWatch Logs para logs de aplicación (más allá de métricas)
 6. **Backup**: Implementar estrategias de backup para datos críticos (RDS, S3, etc.)
@@ -1526,9 +1655,73 @@ target_group_arns = [module.alb.target_group_arn]  # Conectado al ALB
 - **Grace Period**: Tiempo de espera antes de considerar una instancia como no saludable
 - **Termination Policies**: El ASG termina instancias de forma inteligente (más antiguas primero, distribuidas entre AZs)
 
+## Configuración de AWS Secrets Manager
+
+### Habilitar Secretos en un Ambiente
+
+Para almacenar secretos usando AWS Secrets Manager, edita `infra/envs/{ambiente}/terraform.tfvars`:
+
+#### Ejemplo: Secreto de Base de Datos
+```hcl
+# Habilitar creación del secreto de BD
+create_db_secret = true
+db_username      = "myapp_user"
+db_password      = "SuperSecurePassword123!"  # ⚠️ Valor sensible
+db_host          = "mydb.example.com"
+db_port          = 3306
+db_name          = "myapp_db"
+db_engine        = "mysql"
+```
+
+#### Ejemplo: Secreto de API Keys
+```hcl
+# Habilitar creación del secreto de API Keys
+create_api_keys_secret = true
+api_keys = {
+  stripe_api_key   = "sk_live_xxxxxxxxxxxxx"  # ⚠️ Valores sensibles
+  sendgrid_api_key = "SG.xxxxxxxxxxxxx"
+}
+```
+
+#### Ejemplo: Secretos Genéricos
+```hcl
+# Secretos genéricos personalizados
+app_secrets = {
+  jwt_secret = {
+    description   = "JWT signing secret"
+    secret_string = jsonencode({
+      secret = "my-jwt-secret-key-12345"
+    })
+  }
+}
+```
+
+### Acceso a Secretos en las Instancias
+
+Los secretos se descargan automáticamente al iniciar cada instancia en:
+- **Ubicación**: `/opt/app/secrets/`
+- **Formato**: JSON (archivos `.json`) y variables de entorno (archivos `.env`)
+- **Permisos**: Solo lectura para root (600)
+
+**Ejemplo de uso en aplicación**:
+```bash
+# Cargar variables de entorno de BD
+source /opt/app/secrets/db.env
+
+# O leer JSON directamente
+cat /opt/app/secrets/genius-dev-database-credentials.json
+```
+
+### Documentación Completa
+
+Para más detalles, consulta:
+- **Guía completa**: `infra/GUIA_SECRETS_MANAGER.md`
+- Incluye ejemplos detallados, troubleshooting, y mejores prácticas
+
 ## Recursos y Referencias
 
 - [Documentación de Terraform](https://www.terraform.io/docs)
 - [AWS Provider para Terraform](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
+- [AWS Secrets Manager - Documentación Oficial](https://docs.aws.amazon.com/secretsmanager/)
 - [Best Practices de AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)
 - [Terraform Modules Best Practices](https://www.terraform.io/docs/language/modules/develop/index.html)

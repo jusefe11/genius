@@ -60,3 +60,39 @@ owner       = "platform-team"
 team        = "platform-engineering"
 managed_by  = "terraform"
 
+# ==============================================================================
+# AWS Secrets Manager Configuration
+# ==============================================================================
+# Para almacenar secretos de forma segura usando AWS Secrets Manager
+# Ver: infra/GUIA_SECRETS_MANAGER.md para más detalles
+
+# Secreto de Base de Datos (deshabilitado por defecto)
+# create_db_secret = false
+# db_username      = "myapp_user"
+# db_password      = "SuperSecurePassword123!"  # ⚠️ Valor sensible
+# db_host          = "mydb.example.com"
+# db_port          = 3306
+# db_name          = "myapp_db"
+# db_engine        = "mysql"
+
+# Secreto de API Keys (deshabilitado por defecto)
+# create_api_keys_secret = false
+# api_keys = {
+#   stripe_api_key   = "sk_live_xxxxxxxxxxxxx"  # ⚠️ Valores sensibles
+#   sendgrid_api_key = "SG.xxxxxxxxxxxxx"
+# }
+
+# Secretos Genéricos (opcional)
+# app_secrets = {
+#   jwt_secret = {
+#     description   = "JWT signing secret"
+#     secret_string = jsonencode({
+#       secret = "my-jwt-secret-key-12345"
+#     })
+#   }
+# }
+
+# Clave KMS personalizada para cifrar secretos (opcional)
+# Si no se especifica, usa la clave por defecto de Secrets Manager
+# secrets_manager_kms_key_ids = []
+

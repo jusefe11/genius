@@ -40,6 +40,42 @@ resource "aws_iam_role_policy_attachment" "ssm_managed_instance_core" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+# Política IAM para permitir leer secretos de AWS Secrets Manager
+resource "aws_iam_role_policy" "secrets_manager_read" {
+  count = length(var.secrets_manager_arns) > 0 ? 1 : 0
+  name  = "${var.project_name}-${var.environment}-secrets-manager-read"
+  role  = aws_iam_role.ssm_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = var.secrets_manager_arns
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kms:Decrypt"
+        ]
+        Resource = var.secrets_manager_kms_key_ids
+        Condition = {
+          StringEquals = {
+            "kms:ViaService" = "secretsmanager.${data.aws_region.current.name}.amazonaws.com"
+          }
+        }
+      }
+    ]
+  })
+}
+
+# Data source para obtener la región actual
+data "aws_region" "current" {}
+
 # IAM Instance Profile para asociar el role a las instancias EC2
 resource "aws_iam_instance_profile" "ssm_instance_profile" {
   name = "${var.project_name}-${var.environment}-ssm-profile"
@@ -72,7 +108,8 @@ resource "aws_launch_template" "app" {
   # El ASG especifica las subredes privadas, por lo que automáticamente no tendrán IP pública
 
   user_data = base64encode(templatefile("${path.module}/user_data.sh", {
-    app_port = var.app_port
+    app_port                = var.app_port
+    secrets_manager_secrets = join(" ", var.secrets_manager_secret_names)
   }))
 
   tag_specifications {

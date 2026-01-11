@@ -151,3 +151,66 @@ variable "managed_by" {
   type        = string
   default     = "terraform"
 }
+
+# Variables para AWS Secrets Manager
+variable "create_db_secret" {
+  description = "Crear secreto para credenciales de base de datos en Secrets Manager"
+  type        = bool
+  default     = false
+  sensitive   = false
+}
+
+variable "db_username" {
+  description = "Usuario de la base de datos (solo si create_db_secret = true)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "db_password" {
+  description = "Contraseña de la base de datos (solo si create_db_secret = true)"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "db_host" {
+  description = "Host de la base de datos (solo si create_db_secret = true)"
+  type        = string
+  default     = ""
+}
+
+variable "db_name" {
+  description = "Nombre de la base de datos (solo si create_db_secret = true)"
+  type        = string
+  default     = ""
+}
+
+variable "create_api_keys_secret" {
+  description = "Crear secreto para API Keys en Secrets Manager"
+  type        = bool
+  default     = false
+}
+
+variable "api_keys" {
+  description = "Mapa de API Keys (clave-valor). Solo usado si create_api_keys_secret = true"
+  type        = map(string)
+  default     = {}
+  sensitive   = true
+}
+
+variable "app_secrets" {
+  description = "Mapa de secretos genéricos de la aplicación"
+  type = map(object({
+    description   = optional(string)
+    secret_string = string
+  }))
+  default   = {}
+  sensitive = true
+}
+
+variable "secrets_manager_kms_key_ids" {
+  description = "Lista de ARNs de claves KMS usadas para cifrar los secretos (opcional, por defecto usa la clave por defecto de Secrets Manager)"
+  type        = list(string)
+  default     = []
+}

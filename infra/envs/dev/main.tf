@@ -75,6 +75,36 @@ module "alb" {
   managed_by  = var.managed_by
 }
 
+# Módulo Secrets Manager
+module "secrets_manager" {
+  source = "../../modules/secrets-manager"
+
+  project_name  = var.project_name
+  environment   = var.environment
+
+  # Secreto de Base de Datos
+  create_db_secret = var.create_db_secret
+  db_username      = var.db_username
+  db_password      = var.db_password
+  db_host          = var.db_host
+  db_port          = var.db_port
+  db_name          = var.db_name
+  db_engine        = var.db_engine
+
+  # Secreto de API Keys
+  create_api_keys_secret = var.create_api_keys_secret
+  api_keys               = var.api_keys
+
+  # Secretos genéricos
+  app_secrets = var.app_secrets
+
+  # Tags para FinOps
+  cost_center = var.cost_center
+  owner       = var.owner
+  team        = var.team
+  managed_by  = var.managed_by
+}
+
 # Módulo Auto Scaling Group
 module "autoscaling" {
   source = "../../modules/autoscaling"
@@ -91,6 +121,15 @@ module "autoscaling" {
   min_size          = var.min_size
   max_size          = var.max_size
   desired_capacity  = var.desired_capacity
+
+  # Secrets Manager
+  secrets_manager_arns         = module.secrets_manager.all_secret_arns
+  secrets_manager_kms_key_ids  = var.secrets_manager_kms_key_ids
+  secrets_manager_secret_names = concat(
+    var.create_db_secret && module.secrets_manager.db_secret_name != null ? [module.secrets_manager.db_secret_name] : [],
+    var.create_api_keys_secret && module.secrets_manager.api_keys_secret_name != null ? [module.secrets_manager.api_keys_secret_name] : [],
+    [for name in module.secrets_manager.app_secrets_names : name]
+  )
 
   # Tags para FinOps
   cost_center = var.cost_center

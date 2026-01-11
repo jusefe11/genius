@@ -65,6 +65,25 @@ variable "app_port" {
   default     = 8080
 }
 
+# Variables para AWS Secrets Manager
+variable "secrets_manager_arns" {
+  description = "Lista de ARNs de secretos de Secrets Manager a los que las instancias deben tener acceso"
+  type        = list(string)
+  default     = []
+}
+
+variable "secrets_manager_kms_key_ids" {
+  description = "Lista de ARNs de claves KMS usadas para cifrar los secretos (opcional, por defecto usa la clave por defecto de Secrets Manager)"
+  type        = list(string)
+  default     = []
+}
+
+variable "secrets_manager_secret_names" {
+  description = "Lista de nombres de secretos de Secrets Manager a leer en user_data (solo nombres, sin ARN completo)"
+  type        = list(string)
+  default     = []
+}
+
 # Tags para FinOps
 variable "cost_center" {
   description = "Centro de costo para gestión FinOps"
