@@ -4,6 +4,19 @@
 # Actualizar sistema
 yum update -y
 
+# Asegurar que SSM Agent esté instalado y ejecutándose (requerido para Session Manager)
+# Amazon Linux 2 viene con SSM Agent preinstalado, pero lo verificamos y habilitamos
+if ! command -v amazon-ssm-agent &> /dev/null; then
+    yum install -y amazon-ssm-agent
+fi
+
+# Iniciar y habilitar SSM Agent
+systemctl start amazon-ssm-agent
+systemctl enable amazon-ssm-agent
+
+# Verificar estado del SSM Agent
+systemctl status amazon-ssm-agent || echo "SSM Agent status check failed" >> /var/log/user-data.log
+
 # Instalar herramientas básicas
 yum install -y docker
 
@@ -25,3 +38,4 @@ docker run -d \
 # En producción, configurar un health endpoint apropiado
 
 echo "Aplicación iniciada en el puerto ${app_port}" >> /var/log/user-data.log
+echo "SSM Agent configurado para Session Manager" >> /var/log/user-data.log

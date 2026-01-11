@@ -95,89 +95,12 @@ resource "aws_cloudwatch_dashboard" "main" {
 
   dashboard_body = jsonencode({
     widgets = [
-      # Widget 1: Healthy Hosts (Número) - Solo TargetGroup como dimensión
+      # Widget 1: CPU Usage (Gráfico línea) - AutoScalingGroupName como dimensión
       {
         type   = "metric"
         x      = 0
         y      = 0
-        width  = 6
-        height = 6
-
-        properties = {
-          metrics = [
-            [
-              "AWS/ApplicationELB",
-              "HealthyHostCount",
-              "TargetGroup",
-              var.target_group_arn
-            ]
-          ]
-          period = 300
-          stat   = "Average"
-          region = data.aws_region.current.name
-          title  = "Healthy Hosts"
-          view   = "singleValue"
-        }
-      },
-      # Widget 2: Request Count (Gráfico línea) - Solo LoadBalancer como dimensión
-      {
-        type   = "metric"
-        x      = 6
-        y      = 0
-        width  = 9
-        height = 6
-
-        properties = {
-          metrics = [
-            [
-              "AWS/ApplicationELB",
-              "RequestCount",
-              "LoadBalancer",
-              var.alb_arn
-            ]
-          ]
-          period = 300
-          stat   = "Sum"
-          region = data.aws_region.current.name
-          title  = "Request Count"
-          view   = "timeSeries"
-        }
-      },
-      # Widget 3: Response Time (Gráfico línea) - Solo LoadBalancer como dimensión
-      {
-        type   = "metric"
-        x      = 0
-        y      = 6
-        width  = 9
-        height = 6
-
-        properties = {
-          metrics = [
-            [
-              "AWS/ApplicationELB",
-              "TargetResponseTime",
-              "LoadBalancer",
-              var.alb_arn
-            ]
-          ]
-          period = 300
-          stat   = "Average"
-          region = data.aws_region.current.name
-          title  = "Response Time (seconds)"
-          view   = "timeSeries"
-          yAxis = {
-            left = {
-              label = "Seconds"
-            }
-          }
-        }
-      },
-      # Widget 4: CPU Usage (Gráfico línea) - Solo AutoScalingGroupName como dimensión
-      {
-        type   = "metric"
-        x      = 9
-        y      = 0
-        width  = 6
+        width  = 24
         height = 6
 
         properties = {
