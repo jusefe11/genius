@@ -5,6 +5,11 @@ data "aws_region" "current" {}
 locals {
   alb_name = split("/", var.alb_arn)[length(split("/", var.alb_arn)) - 1]
   
+  # Target Group identifier: formato "targetgroup/name/id" (requerido por CloudWatch)
+  # ARN format: arn:aws:elasticloadbalancing:region:account:targetgroup/name/id
+  # Extraer la parte despues del ultimo ":" que contiene "targetgroup/name/id"
+  target_group_identifier = split(":", var.target_group_arn)[5]
+  
   common_tags = {
     Environment = var.environment
     Project     = var.project_name
@@ -33,8 +38,8 @@ resource "aws_cloudwatch_metric_alarm" "unhealthy_hosts" {
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    TargetGroup  = var.target_group_arn
-    LoadBalancer = var.alb_arn
+    TargetGroup  = local.target_group_identifier
+    LoadBalancer = local.alb_name
   }
 
   tags = merge(
@@ -60,7 +65,7 @@ resource "aws_cloudwatch_metric_alarm" "http_5xx_errors" {
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    LoadBalancer = var.alb_arn
+    LoadBalancer = local.alb_name
   }
 
   tags = merge(
@@ -121,7 +126,7 @@ resource "aws_cloudwatch_dashboard" "main" {
               "AWS/ApplicationELB",
               "HealthyHostCount",
               "TargetGroup",
-              var.target_group_name,
+              local.target_group_identifier,
               "LoadBalancer",
               local.alb_name,
               {
@@ -134,7 +139,7 @@ resource "aws_cloudwatch_dashboard" "main" {
               "AWS/ApplicationELB",
               "UnHealthyHostCount",
               "TargetGroup",
-              var.target_group_name,
+              local.target_group_identifier,
               "LoadBalancer",
               local.alb_name,
               {
@@ -249,7 +254,7 @@ resource "aws_cloudwatch_dashboard" "main" {
               "AWS/ApplicationELB",
               "UnHealthyHostCount",
               "TargetGroup",
-              var.target_group_name,
+              local.target_group_identifier,
               "LoadBalancer",
               local.alb_name,
               {
