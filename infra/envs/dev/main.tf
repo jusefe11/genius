@@ -150,6 +150,7 @@ module "cloudwatch" {
   asg_name           = module.autoscaling.autoscaling_group_name
   cpu_threshold      = 80
   error_5xx_threshold = 5
+  expected_docker_containers = 2  # Numero total esperado de contenedores Docker en el ASG (2 instancias * 1 contenedor por instancia)
 
   # Tags para FinOps
   cost_center = var.cost_center

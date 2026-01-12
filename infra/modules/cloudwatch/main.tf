@@ -158,6 +158,36 @@ resource "aws_cloudwatch_metric_alarm" "high_memory" {
   )
 }
 
+# Alarma 6: Contenedores Docker caidos (solo para dev)
+# Esta alarma se activa cuando el numero total de contenedores corriendo en el ASG es menor al esperado
+# El threshold se calcula como: expected_containers_per_instance * min_instances
+resource "aws_cloudwatch_metric_alarm" "docker_containers_down" {
+  count = var.environment == "dev" ? 1 : 0
+  
+  alarm_name          = "${var.project_name}-${var.environment}-docker-containers-down"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "RunningContainers"
+  namespace           = "Docker/Containers"
+  period              = 60
+  statistic           = "Sum"
+  threshold           = var.expected_docker_containers
+  alarm_description   = "Alerta cuando el numero total de contenedores Docker corriendo en el ASG es menor al esperado. La metrica muestra cuantos contenedores estan arriba en total."
+  treat_missing_data  = "breaching"
+
+  dimensions = {
+    AutoScalingGroupName = var.asg_name
+  }
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-docker-containers-down-alarm"
+      Type = "cloudwatch-alarm"
+    }
+  )
+}
+
 # ==========================================
 # DASHBOARD
 # ==========================================

@@ -704,7 +704,8 @@ switch ($option) {
         $alarms = @(
             "genius-dev-no-healthy-hosts",
             "genius-dev-high-cpu",
-            "genius-dev-high-memory"
+            "genius-dev-high-memory",
+            "genius-dev-docker-containers-down"
         )
         
         foreach ($alarmName in $alarms) {

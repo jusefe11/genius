@@ -186,6 +186,56 @@ docker run -d \
 # El health check del ALB verificará que el puerto responda
 # En producción, configurar un health endpoint apropiado
 
+# Crear script para monitorear contenedores Docker y enviar metricas a CloudWatch
+echo "Configurando monitoreo de contenedores Docker..." >> $LOG_FILE
+cat > /usr/local/bin/monitor-docker-containers.sh <<'DOCKERMONEOF'
+#!/bin/bash
+# Script para monitorear contenedores Docker y enviar metricas a CloudWatch
+
+# Obtener region de AWS
+AWS_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || echo "us-east-1")
+INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
+
+# Contar contenedores Docker corriendo
+RUNNING_CONTAINERS=$(docker ps -q 2>/dev/null | wc -l)
+
+# Contar todos los contenedores (corriendo y detenidos)
+TOTAL_CONTAINERS=$(docker ps -aq 2>/dev/null | wc -l)
+
+# Obtener nombre del Auto Scaling Group desde metadata
+ASG_NAME=$(aws autoscaling describe-auto-scaling-instances \
+  --instance-ids "$INSTANCE_ID" \
+  --region "$AWS_REGION" \
+  --query 'AutoScalingInstances[0].AutoScalingGroupName' \
+  --output text 2>/dev/null || echo "unknown")
+
+# Enviar metricas a CloudWatch
+aws cloudwatch put-metric-data \
+  --namespace "Docker/Containers" \
+  --metric-data MetricName=RunningContainers,Value=$RUNNING_CONTAINERS,Unit=Count,Timestamp=$(date -u +%Y-%m-%dT%H:%M:%S) \
+  --dimensions InstanceId=$INSTANCE_ID,AutoScalingGroupName=$ASG_NAME \
+  --region "$AWS_REGION" 2>/dev/null
+
+aws cloudwatch put-metric-data \
+  --namespace "Docker/Containers" \
+  --metric-data MetricName=TotalContainers,Value=$TOTAL_CONTAINERS,Unit=Count,Timestamp=$(date -u +%Y-%m-%dT%H:%M:%S) \
+  --dimensions InstanceId=$INSTANCE_ID,AutoScalingGroupName=$ASG_NAME \
+  --region "$AWS_REGION" 2>/dev/null
+
+# Log para debugging
+echo "$(date): Running containers: $RUNNING_CONTAINERS, Total containers: $TOTAL_CONTAINERS" >> /var/log/docker-monitor.log
+DOCKERMONEOF
+
+chmod +x /usr/local/bin/monitor-docker-containers.sh
+
+# Crear cron job para ejecutar el script cada minuto
+echo "*/1 * * * * root /usr/local/bin/monitor-docker-containers.sh" >> /etc/crontab
+
+# Ejecutar el script inmediatamente
+/usr/local/bin/monitor-docker-containers.sh
+
+echo "Monitoreo de contenedores Docker configurado" >> $LOG_FILE
+
 echo "Aplicación iniciada en el puerto ${app_port}" >> $LOG_FILE
 echo "SSM Agent configurado para Session Manager" >> $LOG_FILE
 if [ -d "$SECRETS_DIR" ]; then

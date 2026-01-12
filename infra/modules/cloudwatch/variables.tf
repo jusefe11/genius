@@ -40,6 +40,12 @@ variable "error_5xx_threshold" {
   default     = 5
 }
 
+variable "expected_docker_containers" {
+  description = "Numero esperado de contenedores Docker corriendo por instancia"
+  type        = number
+  default     = 1
+}
+
 # Tags para FinOps
 variable "cost_center" {
   description = "Centro de costo para gestión FinOps"

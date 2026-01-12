@@ -92,6 +92,18 @@ resource "aws_iam_role_policy" "cloudwatch_agent" {
             "cloudwatch:namespace" = "CWAgent"
           }
         }
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:PutMetricData"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "cloudwatch:namespace" = "Docker/Containers"
+          }
+        }
       }
     ]
   })
