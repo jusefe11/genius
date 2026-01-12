@@ -81,13 +81,13 @@ resource "aws_cloudwatch_metric_alarm" "http_5xx_errors" {
 resource "aws_cloudwatch_metric_alarm" "high_cpu" {
   alarm_name          = "${var.project_name}-${var.environment}-high-cpu"
   comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 2
+  evaluation_periods  = 1
   metric_name         = "CPUUtilization"
   namespace           = "AWS/EC2"
-  period              = 300
+  period              = 60
   statistic           = "Average"
   threshold           = var.cpu_threshold
-  alarm_description   = "Alerta cuando el CPU está por encima del umbral"
+  alarm_description   = "Alerta cuando el CPU está por encima del umbral durante 1 minuto"
   treat_missing_data  = "notBreaching"
 
   dimensions = {
@@ -136,13 +136,13 @@ resource "aws_cloudwatch_metric_alarm" "high_memory" {
   
   alarm_name          = "${var.project_name}-${var.environment}-high-memory"
   comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 2
+  evaluation_periods  = 1
   metric_name         = "mem_used_percent"
   namespace           = "CWAgent"
-  period              = 300
+  period              = 60
   statistic           = "Average"
   threshold           = 80
-  alarm_description   = "Alerta cuando el uso de RAM esta por encima del 80%"
+  alarm_description   = "Alerta cuando el uso de RAM esta por encima del 80% durante 1 minuto"
   treat_missing_data  = "missing"
 
   dimensions = {
