@@ -168,10 +168,8 @@ locals {
   
   # Target Group identifier: formato "targetgroup/name/id" (requerido por CloudWatch)
   # ARN format: arn:aws:elasticloadbalancing:region:account:targetgroup/name/id
-  # split(":") da: ["arn", "aws", "elasticloadbalancing", "region", "account", "targetgroup/name/id"]
-  # Tomamos el último elemento (índice 5) que contiene "targetgroup/name/id"
-  target_group_parts = split(":", module.alb.target_group_arn)
-  target_group_identifier = local.target_group_parts[length(local.target_group_parts) - 1]
+  # Solución robusta: extraer la parte después del último ":" que contiene "targetgroup/name/id"
+  target_group_identifier = split(":", module.alb.target_group_arn)[5]
 }
 
 # Dashboard personalizado solo para dev con Health Checks mejorados
