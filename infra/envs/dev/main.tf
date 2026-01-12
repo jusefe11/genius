@@ -171,108 +171,22 @@ locals {
   # ARN format: arn:aws:elasticloadbalancing:region:account:targetgroup/name/id
   # Solución robusta: extraer la parte después del último ":" que contiene "targetgroup/name/id"
   target_group_identifier = split(":", module.alb.target_group_arn)[5]
+  
+  # Numero esperado de contenedores Docker (debe coincidir con expected_docker_containers en module.cloudwatch)
+  expected_docker_containers = 2
 }
 
-# Dashboard simplificado solo para dev: Estado de aplicacion, CPU y RAM
+# Dashboard simplificado solo para dev: CPU y Docker
 resource "aws_cloudwatch_dashboard" "dev_enhanced" {
   dashboard_name = "${var.project_name}-${var.environment}-application-status"
 
   dashboard_body = jsonencode({
     widgets = [
-      # Widget 1: Estado de la Aplicacion (Widget de numero - muestra si esta caida)
+      # Widget 1: CPU Usage
       {
         type   = "metric"
         x      = 0
         y      = 0
-        width  = 12
-        height = 6
-
-        properties = {
-          metrics = [
-            [
-              "AWS/ApplicationELB",
-              "HealthyHostCount",
-              "TargetGroup",
-              local.target_group_identifier,
-              "LoadBalancer",
-              local.alb_name,
-              {
-                stat   = "Average"
-                label  = "Hosts Saludables"
-                color  = "#2ca02c"
-              }
-            ]
-          ]
-          period = 60
-          stat   = "Average"
-          region = data.aws_region.current.name
-          title  = "Estado de la Aplicacion"
-          view   = "singleValue"
-          sparkline = false
-        }
-      },
-      # Widget 2: Grafico de HealthyHostCount (para ver historial)
-      {
-        type   = "metric"
-        x      = 12
-        y      = 0
-        width  = 12
-        height = 6
-
-        properties = {
-          metrics = [
-            [
-              "AWS/ApplicationELB",
-              "HealthyHostCount",
-              "TargetGroup",
-              local.target_group_identifier,
-              "LoadBalancer",
-              local.alb_name,
-              {
-                stat   = "Average"
-                label  = "Hosts Saludables"
-                color  = "#2ca02c"
-              }
-            ]
-          ]
-          period = 60
-          stat   = "Average"
-          region = data.aws_region.current.name
-          title  = "Historial - Hosts Saludables"
-          view   = "timeSeries"
-          yAxis = {
-            left = {
-              min = 0
-              label = "Cantidad de Hosts"
-            }
-          }
-          annotations = {
-            horizontal = [
-              {
-                value     = 0
-                label     = "APLICACION CAIDA (0 hosts)"
-                color     = "#d62728"
-                fill      = "below"
-                visible   = true
-                yAxis     = "left"
-              },
-              {
-                value     = 1
-                label     = "Aplicacion Activa (>= 1 host)"
-                color     = "#2ca02c"
-                fill      = "above"
-                visible   = true
-                yAxis     = "left"
-              }
-            ]
-          }
-        }
-      },
-      # Widget 3: CPU Usage
-      {
-        type   = "metric"
-        x      = 0
-        y      = 6
         width  = 12
         height = 8
 
@@ -316,47 +230,46 @@ resource "aws_cloudwatch_dashboard" "dev_enhanced" {
           }
         }
       },
-      # Widget 4: RAM (Memoria) - Requiere CloudWatch Agent
+      # Widget 2: Docker Containers
       {
         type   = "metric"
         x      = 12
-        y      = 6
+        y      = 0
         width  = 12
         height = 8
 
         properties = {
           metrics = [
             [
-              "CWAgent",
-              "mem_used_percent",
+              "Docker/Containers",
+              "RunningContainers",
               "AutoScalingGroupName",
               module.autoscaling.autoscaling_group_name,
               {
-                stat   = "Average"
-                label  = "RAM Usage"
-                color  = "#9467bd"
+                stat   = "Sum"
+                label  = "Contenedores Docker Corriendo"
+                color  = "#2ca02c"
               }
             ]
           ]
-          period = 300
-          stat   = "Average"
+          period = 60
+          stat   = "Sum"
           region = data.aws_region.current.name
-          title  = "RAM Usage (%) - Requiere CloudWatch Agent"
+          title  = "Docker Containers - Contenedores Corriendo"
           view   = "timeSeries"
           yAxis = {
             left = {
               min = 0
-              max = 100
-              label = "Percent"
+              label = "Cantidad de Contenedores"
             }
           }
           annotations = {
             horizontal = [
               {
-                value     = 80
-                label     = "Umbral de Alarma (80%)"
+                value     = local.expected_docker_containers
+                label     = "Contenedores Esperados"
                 color     = "#ff7f0e"
-                fill      = "above"
+                fill      = "below"
                 visible   = true
                 yAxis     = "left"
               }
