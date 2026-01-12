@@ -103,6 +103,33 @@ resource "aws_cloudwatch_metric_alarm" "high_cpu" {
   )
 }
 
+# Alarma 4: Sin hosts saludables
+resource "aws_cloudwatch_metric_alarm" "no_healthy_hosts" {
+  alarm_name          = "${var.project_name}-${var.environment}-no-healthy-hosts"
+  comparison_operator = "LessThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "HealthyHostCount"
+  namespace           = "AWS/ApplicationELB"
+  period              = 60
+  statistic           = "Average"
+  threshold           = 1
+  alarm_description   = "Alerta cuando no hay hosts saludables en el Target Group"
+  treat_missing_data  = "breaching"
+
+  dimensions = {
+    TargetGroup  = local.target_group_identifier
+    LoadBalancer = local.alb_name
+  }
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-no-healthy-hosts-alarm"
+      Type = "cloudwatch-alarm"
+    }
+  )
+}
+
 # ==========================================
 # DASHBOARD
 # ==========================================
