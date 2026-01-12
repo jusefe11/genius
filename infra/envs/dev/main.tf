@@ -166,9 +166,12 @@ locals {
   # ALB name: última parte del ARN (ej: app/genius-dev-alb/1234567890abcdef)
   alb_name = split("/", module.alb.alb_arn)[length(split("/", module.alb.alb_arn)) - 1]
   
-  # Target Group identifier: formato "targetgroup/name/id" (parte después del account ID)
+  # Target Group identifier: formato "targetgroup/name/id" (requerido por CloudWatch)
   # ARN format: arn:aws:elasticloadbalancing:region:account:targetgroup/name/id
-  target_group_identifier = join("/", slice(split("/", module.alb.target_group_arn), 5, length(split("/", module.alb.target_group_arn))))
+  # split(":") da: ["arn", "aws", "elasticloadbalancing", "region", "account", "targetgroup/name/id"]
+  # Tomamos el último elemento (índice 5) que contiene "targetgroup/name/id"
+  target_group_parts = split(":", module.alb.target_group_arn)
+  target_group_identifier = local.target_group_parts[length(local.target_group_parts) - 1]
 }
 
 # Dashboard personalizado solo para dev con Health Checks mejorados
