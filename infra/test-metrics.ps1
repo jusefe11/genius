@@ -58,10 +58,13 @@ Write-Host "  1. Estado de la Aplicacion (HealthyHostCount) [Alarma: no-healthy-
 Write-Host "  2. CPU Usage (CPUUtilization) [Alarma: high-cpu]" -ForegroundColor Yellow
 Write-Host "  3. RAM Usage (mem_used_percent) [Alarma: high-memory]" -ForegroundColor Yellow
 Write-Host ""
-Write-Host "VERIFICACION:" -ForegroundColor White
-Write-Host "  4. Verificar estado de alarmas" -ForegroundColor Green
+Write-Host "PRUEBAS DE FALLO:" -ForegroundColor White
+Write-Host "  4. Detener Docker/Aplicacion (simular caida)" -ForegroundColor Red
 Write-Host ""
-Write-Host "Selecciona una opcion (1-4):" -ForegroundColor Cyan
+Write-Host "VERIFICACION:" -ForegroundColor White
+Write-Host "  5. Verificar estado de alarmas" -ForegroundColor Green
+Write-Host ""
+Write-Host "Selecciona una opcion (1-5):" -ForegroundColor Cyan
 $option = Read-Host
 
 if (-not $option -or $option -eq "") {
@@ -102,7 +105,7 @@ switch ($option) {
         
         Write-Host "`nOK Prueba completada" -ForegroundColor Green
         Write-Host "  - Peticiones exitosas: $successCount" -ForegroundColor White
-        Write-Host "  - Espera 2-5 minutos y verifica Widget 1" -ForegroundColor Yellow
+        Write-Host "  - Espera 2-5 minutos y verifica Widget 1 y 2" -ForegroundColor Yellow
         Write-Host '  - Deberias ver HealthyHostCount mayor a 0 (aplicacion activa)' -ForegroundColor White
         Write-Host "  - Si HealthyHostCount = 0, la aplicacion esta caida" -ForegroundColor Red
         Write-Host ""
@@ -272,7 +275,7 @@ switch ($option) {
                     
                     Write-Host "`nEspera 5-10 minutos para que:" -ForegroundColor Yellow
                     Write-Host "  - Las metricas se actualicen en CloudWatch (periodo: 5 minutos)" -ForegroundColor White
-                    Write-Host "  - Widget 2 muestre CPU cerca de 100%" -ForegroundColor White
+                    Write-Host "  - Widget 3 muestre CPU cerca de 100%" -ForegroundColor White
                     Write-Host "  - La alarma se active (despues de 10 minutos con CPU > 80%)" -ForegroundColor White
                     Write-Host ""
                     Write-Host "IMPORTANTE:" -ForegroundColor Red
@@ -441,7 +444,7 @@ switch ($option) {
                     
                     Write-Host "`nEspera 5-10 minutos para que:" -ForegroundColor Yellow
                     Write-Host "  - Las metricas se actualicen en CloudWatch (periodo: 5 minutos)" -ForegroundColor White
-                    Write-Host "  - Widget 3 muestre RAM cerca de 100%" -ForegroundColor White
+                    Write-Host "  - Widget 4 muestre RAM cerca de 100%" -ForegroundColor White
                     Write-Host "  - La alarma se active (despues de 10 minutos con RAM > 80%)" -ForegroundColor White
                     Write-Host ""
                     Write-Host "IMPORTANTE:" -ForegroundColor Red
@@ -496,6 +499,203 @@ switch ($option) {
     }
     
     "4" {
+        # Prueba: Detener Docker/Aplicacion (simular caida)
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "Prueba: Detener Docker/Aplicacion" -ForegroundColor Red
+        Write-Host "Objetivo: Simular caida de aplicacion para ver cambio en dashboard" -ForegroundColor Yellow
+        Write-Host "========================================`n" -ForegroundColor Cyan
+        
+        Write-Host "IMPORTANTE: Esta prueba detendra Docker o el servicio en una instancia" -ForegroundColor Red
+        Write-Host "Esto causara que HealthyHostCount baje a 0 y la alarma se active" -ForegroundColor Yellow
+        Write-Host ""
+        
+        # Obtener instancias
+        Write-Host "Obteniendo instancias EC2..." -ForegroundColor Yellow
+        try {
+            $instancesOutput = & aws ec2 describe-instances `
+                --filters "Name=tag:Name,Values=*genius-dev*" "Name=instance-state-name,Values=running" `
+                --query 'Reservations[*].Instances[*].[InstanceId,PublicIpAddress]' `
+                --output json 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $instancesJson = $instancesOutput -join "`n"
+            } else {
+                $instancesJson = $null
+            }
+            
+            if (-not $instancesJson) {
+                Write-Host "ERROR Error: No se encontraron instancias o AWS CLI no esta configurado" -ForegroundColor Red
+                break
+            }
+            
+            $instances = $instancesJson | ConvertFrom-Json
+            if ($instances.Count -eq 0) {
+                Write-Host "ERROR Error: No se encontraron instancias en ejecucion" -ForegroundColor Red
+                break
+            }
+            
+            Write-Host "OK Instancias encontradas:" -ForegroundColor Green
+            $instances | ForEach-Object { Write-Host "  - Instance ID: $($_[0]) - IP: $($_[1])" -ForegroundColor White }
+            
+            $instanceId = $instances[0][0]
+            Write-Host "`nUsando instancia: $instanceId" -ForegroundColor Cyan
+            
+            Write-Host "`nOpciones para detener la aplicacion:" -ForegroundColor Yellow
+            Write-Host "  A) Detener todos los contenedores Docker (docker stop)" -ForegroundColor White
+            Write-Host "  B) Detener el servicio Docker (systemctl stop docker)" -ForegroundColor White
+            Write-Host "  C) Detener un contenedor especifico (requiere nombre)" -ForegroundColor White
+            Write-Host "  D) Solo verificar estado actual (sin modificar)" -ForegroundColor White
+            Write-Host ""
+            Write-Host "Selecciona opcion (A/B/C/D):" -ForegroundColor Cyan
+            $subOption = Read-Host
+            
+            if ($subOption -eq "A" -or $subOption -eq "a") {
+                Write-Host "`nADVERTENCIA: Esto detendra TODOS los contenedores Docker" -ForegroundColor Red
+                Write-Host "Continuar? (S/N):" -ForegroundColor Cyan
+                $confirm = Read-Host
+                
+                if ($confirm -eq "S" -or $confirm -eq "s") {
+                    Write-Host "`nDeteniendo todos los contenedores Docker..." -ForegroundColor Yellow
+                    $stopOutput = & aws ssm send-command `
+                        --instance-ids $instanceId `
+                        --document-name "AWS-RunShellScript" `
+                        --parameters "commands=['sudo docker stop $(sudo docker ps -q)']" `
+                        --output json 2>&1
+                    if ($LASTEXITCODE -eq 0) {
+                        $stopResult = ($stopOutput -join "`n") | ConvertFrom-Json
+                        $stopCommandId = $stopResult.Command.CommandId
+                        Write-Host "OK Comando enviado (Command ID: $stopCommandId)" -ForegroundColor Green
+                        
+                        Write-Host "`nEspera 1-2 minutos para que:" -ForegroundColor Yellow
+                        Write-Host "  - El ALB detecte que el health check falla" -ForegroundColor White
+                        Write-Host "  - HealthyHostCount baje a 0 en el dashboard" -ForegroundColor White
+                        Write-Host "  - La alarma 'genius-dev-no-healthy-hosts' se active" -ForegroundColor White
+                        Write-Host ""
+                        Write-Host "Para restaurar la aplicacion:" -ForegroundColor Cyan
+                        Write-Host "  aws ssm send-command --instance-ids $instanceId --document-name 'AWS-RunShellScript' --parameters 'commands=[\"sudo docker start $(sudo docker ps -aq)\"]'" -ForegroundColor White
+                    } else {
+                        Write-Host "ERROR Error al detener contenedores. Verifica permisos SSM." -ForegroundColor Red
+                    }
+                }
+            }
+            elseif ($subOption -eq "B" -or $subOption -eq "b") {
+                Write-Host "`nADVERTENCIA: Esto detendra el servicio Docker completamente" -ForegroundColor Red
+                Write-Host "Continuar? (S/N):" -ForegroundColor Cyan
+                $confirm = Read-Host
+                
+                if ($confirm -eq "S" -or $confirm -eq "s") {
+                    Write-Host "`nDeteniendo servicio Docker..." -ForegroundColor Yellow
+                    $stopOutput = & aws ssm send-command `
+                        --instance-ids $instanceId `
+                        --document-name "AWS-RunShellScript" `
+                        --parameters "commands=['sudo systemctl stop docker']" `
+                        --output json 2>&1
+                    if ($LASTEXITCODE -eq 0) {
+                        $stopResult = ($stopOutput -join "`n") | ConvertFrom-Json
+                        $stopCommandId = $stopResult.Command.CommandId
+                        Write-Host "OK Comando enviado (Command ID: $stopCommandId)" -ForegroundColor Green
+                        
+                        Write-Host "`nEspera 1-2 minutos para que:" -ForegroundColor Yellow
+                        Write-Host "  - El ALB detecte que el health check falla" -ForegroundColor White
+                        Write-Host "  - HealthyHostCount baje a 0 en el dashboard" -ForegroundColor White
+                        Write-Host "  - La alarma 'genius-dev-no-healthy-hosts' se active" -ForegroundColor White
+                        Write-Host ""
+                        Write-Host "Para restaurar Docker:" -ForegroundColor Cyan
+                        Write-Host "  aws ssm send-command --instance-ids $instanceId --document-name 'AWS-RunShellScript' --parameters 'commands=[\"sudo systemctl start docker\"]'" -ForegroundColor White
+                    } else {
+                        Write-Host "ERROR Error al detener Docker. Verifica permisos SSM." -ForegroundColor Red
+                    }
+                }
+            }
+            elseif ($subOption -eq "C" -or $subOption -eq "c") {
+                Write-Host "`nIngresa el nombre del contenedor Docker a detener:" -ForegroundColor Cyan
+                $containerName = Read-Host
+                
+                if ($containerName) {
+                    Write-Host "`nDeteniendo contenedor: $containerName" -ForegroundColor Yellow
+                    $stopOutput = & aws ssm send-command `
+                        --instance-ids $instanceId `
+                        --document-name "AWS-RunShellScript" `
+                        --parameters "commands=[\"sudo docker stop $containerName\"]" `
+                        --output json 2>&1
+                    if ($LASTEXITCODE -eq 0) {
+                        $stopResult = ($stopOutput -join "`n") | ConvertFrom-Json
+                        $stopCommandId = $stopResult.Command.CommandId
+                        Write-Host "OK Comando enviado (Command ID: $stopCommandId)" -ForegroundColor Green
+                        
+                        Write-Host "`nEspera 1-2 minutos para ver el cambio en el dashboard" -ForegroundColor Yellow
+                        Write-Host ""
+                        Write-Host "Para restaurar el contenedor:" -ForegroundColor Cyan
+                        Write-Host "  aws ssm send-command --instance-ids $instanceId --document-name 'AWS-RunShellScript' --parameters 'commands=[\"sudo docker start $containerName\"]'" -ForegroundColor White
+                    } else {
+                        Write-Host "ERROR Error al detener contenedor. Verifica permisos SSM." -ForegroundColor Red
+                    }
+                } else {
+                    Write-Host "ERROR Nombre de contenedor no especificado" -ForegroundColor Red
+                }
+            }
+            else {
+                Write-Host "`nVerificando estado actual de contenedores Docker..." -ForegroundColor Yellow
+                $statusOutput = & aws ssm send-command `
+                    --instance-ids $instanceId `
+                    --document-name "AWS-RunShellScript" `
+                    --parameters "commands=['sudo docker ps']" `
+                    --output json 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    $statusResult = ($statusOutput -join "`n") | ConvertFrom-Json
+                    $statusCommandId = $statusResult.Command.CommandId
+                    Start-Sleep -Seconds 3
+                    
+                    $statusCheckOutput = & aws ssm get-command-invocation `
+                        --command-id $statusCommandId `
+                        --instance-id $instanceId `
+                        --output json 2>&1
+                    if ($LASTEXITCODE -eq 0) {
+                        $statusCheck = ($statusCheckOutput -join "`n") | ConvertFrom-Json
+                        if ($statusCheck.Status -eq "Success") {
+                            Write-Host "`nContenedores Docker en ejecucion:" -ForegroundColor Green
+                            Write-Host $statusCheck.StandardOutputContent -ForegroundColor White
+                        }
+                    }
+                }
+            }
+            
+            Write-Host ""
+            Write-Host "¿Quieres verificar el estado de la alarma ahora? (S/N)" -ForegroundColor Cyan
+            $checkAlarm = Read-Host
+            if ($checkAlarm -eq "S" -or $checkAlarm -eq "s") {
+                Write-Host "`nVerificando estado de la alarma..." -ForegroundColor Yellow
+                try {
+                    $alarmOutput = & aws cloudwatch describe-alarms --alarm-names "genius-dev-no-healthy-hosts" --query 'MetricAlarms[0]' --output json 2>&1
+                    if ($LASTEXITCODE -eq 0) {
+                        $alarm = ($alarmOutput -join "`n") | ConvertFrom-Json
+                        if ($alarm) {
+                            $state = $alarm.StateValue
+                            $color = switch ($state) {
+                                "OK" { "Green" }
+                                "ALARM" { "Red" }
+                                default { "Yellow" }
+                            }
+                            Write-Host "  Estado actual: $state" -ForegroundColor $color
+                            Write-Host "  Razon: $($alarm.StateReason)" -ForegroundColor Gray
+                            Write-Host ""
+                            Write-Host "NOTA: La alarma puede tardar 1-2 minutos en actualizarse" -ForegroundColor Yellow
+                            Write-Host "      Despues de detener Docker, espera y verifica de nuevo" -ForegroundColor Yellow
+                        } else {
+                            Write-Host "  ERROR Alarma no encontrada" -ForegroundColor Red
+                        }
+                    } else {
+                        Write-Host "  ERROR No se pudo consultar la alarma" -ForegroundColor Red
+                    }
+                } catch {
+                    Write-Host "  ERROR: $_" -ForegroundColor Red
+                }
+            }
+        } catch {
+            Write-Host "ERROR Error: $_" -ForegroundColor Red
+        }
+    }
+    
+    "5" {
         # Verificar alarmas
         Write-Host "`n========================================" -ForegroundColor Cyan
         Write-Host "Estado de Alarmas CloudWatch" -ForegroundColor Cyan
@@ -564,7 +764,7 @@ if ($option -eq "1") {
 }
 
 # Mostrar instrucciones segun la prueba ejecutada
-if ($option -ne "4") {
+if ($option -ne "4" -and $option -ne "5") {
     Write-Host "`n========================================" -ForegroundColor Cyan
     Write-Host "Proximos pasos" -ForegroundColor Cyan
     Write-Host "========================================" -ForegroundColor Cyan
@@ -584,18 +784,24 @@ if ($option -ne "4") {
     Write-Host "`nWidgets a verificar:" -ForegroundColor Cyan
     switch ($option) {
         "1" {
-            Write-Host "  - Widget 1: Estado de la Aplicacion (HealthyHostCount)" -ForegroundColor White
+            Write-Host "  - Widget 1: Estado de la Aplicacion (numero de hosts saludables)" -ForegroundColor White
+            Write-Host "  - Widget 2: Historial de HealthyHostCount" -ForegroundColor White
             Write-Host "    Si HealthyHostCount = 0: Aplicacion caida" -ForegroundColor Red
             Write-Host "    Si HealthyHostCount >= 1: Aplicacion activa" -ForegroundColor Green
         }
         "2" {
-            Write-Host "  - Widget 2: CPU Usage (%)" -ForegroundColor White
+            Write-Host "  - Widget 3: CPU Usage (%)" -ForegroundColor White
             Write-Host "  - Alarma: genius-dev-high-cpu" -ForegroundColor White
         }
         "3" {
-            Write-Host "  - Widget 3: RAM Usage (%)" -ForegroundColor White
+            Write-Host "  - Widget 4: RAM Usage (%)" -ForegroundColor White
             Write-Host "  - Alarma: genius-dev-high-memory" -ForegroundColor White
             Write-Host "  - NOTA: Requiere CloudWatch Agent instalado" -ForegroundColor Yellow
+        }
+        "4" {
+            Write-Host "  - Widget 1: Estado de la Aplicacion (debera mostrar 0)" -ForegroundColor White
+            Write-Host "  - Widget 2: Historial (debera mostrar caida)" -ForegroundColor White
+            Write-Host "  - Alarma: genius-dev-no-healthy-hosts (debera activarse)" -ForegroundColor Red
         }
     }
     

@@ -178,13 +178,13 @@ resource "aws_cloudwatch_dashboard" "dev_enhanced" {
 
   dashboard_body = jsonencode({
     widgets = [
-      # Widget 1: Estado de la Aplicacion (si esta caida)
+      # Widget 1: Estado de la Aplicacion (Widget de numero - muestra si esta caida)
       {
         type   = "metric"
         x      = 0
         y      = 0
-        width  = 24
-        height = 8
+        width  = 12
+        height = 6
 
         properties = {
           metrics = [
@@ -205,7 +205,39 @@ resource "aws_cloudwatch_dashboard" "dev_enhanced" {
           period = 60
           stat   = "Average"
           region = data.aws_region.current.name
-          title  = "Estado de la Aplicacion - Si esta caida (HealthyHostCount = 0)"
+          title  = "Estado de la Aplicacion"
+          view   = "singleValue"
+          sparkline = false
+        }
+      },
+      # Widget 2: Grafico de HealthyHostCount (para ver historial)
+      {
+        type   = "metric"
+        x      = 12
+        y      = 0
+        width  = 12
+        height = 6
+
+        properties = {
+          metrics = [
+            [
+              "AWS/ApplicationELB",
+              "HealthyHostCount",
+              "TargetGroup",
+              local.target_group_identifier,
+              "LoadBalancer",
+              local.alb_name,
+              {
+                stat   = "Average"
+                label  = "Hosts Saludables"
+                color  = "#2ca02c"
+              }
+            ]
+          ]
+          period = 60
+          stat   = "Average"
+          region = data.aws_region.current.name
+          title  = "Historial - Hosts Saludables"
           view   = "timeSeries"
           yAxis = {
             left = {
@@ -217,7 +249,7 @@ resource "aws_cloudwatch_dashboard" "dev_enhanced" {
             horizontal = [
               {
                 value     = 0
-                label     = "Aplicacion Caida (0 hosts saludables)"
+                label     = "APLICACION CAIDA (0 hosts)"
                 color     = "#d62728"
                 fill      = "below"
                 visible   = true
@@ -225,7 +257,7 @@ resource "aws_cloudwatch_dashboard" "dev_enhanced" {
               },
               {
                 value     = 1
-                label     = "Aplicacion Activa (>= 1 host saludable)"
+                label     = "Aplicacion Activa (>= 1 host)"
                 color     = "#2ca02c"
                 fill      = "above"
                 visible   = true
@@ -235,11 +267,11 @@ resource "aws_cloudwatch_dashboard" "dev_enhanced" {
           }
         }
       },
-      # Widget 2: CPU Usage
+      # Widget 3: CPU Usage
       {
         type   = "metric"
         x      = 0
-        y      = 8
+        y      = 6
         width  = 12
         height = 8
 
@@ -283,11 +315,11 @@ resource "aws_cloudwatch_dashboard" "dev_enhanced" {
           }
         }
       },
-      # Widget 3: RAM (Memoria) - Requiere CloudWatch Agent
+      # Widget 4: RAM (Memoria) - Requiere CloudWatch Agent
       {
         type   = "metric"
         x      = 12
-        y      = 8
+        y      = 6
         width  = 12
         height = 8
 

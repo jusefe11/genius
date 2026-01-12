@@ -143,7 +143,7 @@ resource "aws_cloudwatch_metric_alarm" "high_memory" {
   statistic           = "Average"
   threshold           = 80
   alarm_description   = "Alerta cuando el uso de RAM esta por encima del 80%"
-  treat_missing_data  = "notBreaching"
+  treat_missing_data  = "notEvaluated"
 
   dimensions = {
     AutoScalingGroupName = var.asg_name
