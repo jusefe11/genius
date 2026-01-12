@@ -114,7 +114,7 @@ resource "aws_cloudwatch_metric_alarm" "no_healthy_hosts" {
   statistic           = "Average"
   threshold           = 1
   alarm_description   = "Alerta cuando no hay hosts saludables en el Target Group"
-  treat_missing_data  = "breaching"
+  treat_missing_data  = "notBreaching"
 
   dimensions = {
     TargetGroup  = local.target_group_identifier
@@ -125,6 +125,34 @@ resource "aws_cloudwatch_metric_alarm" "no_healthy_hosts" {
     local.common_tags,
     {
       Name = "${var.project_name}-${var.environment}-no-healthy-hosts-alarm"
+      Type = "cloudwatch-alarm"
+    }
+  )
+}
+
+# Alarma 5: RAM Alta (solo si CloudWatch Agent esta configurado)
+resource "aws_cloudwatch_metric_alarm" "high_memory" {
+  count = var.environment == "dev" ? 1 : 0
+  
+  alarm_name          = "${var.project_name}-${var.environment}-high-memory"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 2
+  metric_name         = "mem_used_percent"
+  namespace           = "CWAgent"
+  period              = 300
+  statistic           = "Average"
+  threshold           = 80
+  alarm_description   = "Alerta cuando el uso de RAM esta por encima del 80%"
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    AutoScalingGroupName = var.asg_name
+  }
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.project_name}-${var.environment}-high-memory-alarm"
       Type = "cloudwatch-alarm"
     }
   )

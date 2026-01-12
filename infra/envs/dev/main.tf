@@ -172,19 +172,19 @@ locals {
   target_group_identifier = split(":", module.alb.target_group_arn)[5]
 }
 
-# Dashboard personalizado solo para dev con Health Checks mejorados
+# Dashboard simplificado solo para dev: Estado de aplicacion, CPU y RAM
 resource "aws_cloudwatch_dashboard" "dev_enhanced" {
   dashboard_name = "${var.project_name}-${var.environment}-application-status"
 
   dashboard_body = jsonencode({
     widgets = [
-      # Widget 1: Health Checks - Hosts Saludables vs No Saludables
+      # Widget 1: Estado de la Aplicacion (si esta caida)
       {
         type   = "metric"
         x      = 0
         y      = 0
         width  = 24
-        height = 6
+        height = 8
 
         properties = {
           metrics = [
@@ -200,25 +200,12 @@ resource "aws_cloudwatch_dashboard" "dev_enhanced" {
                 label  = "Hosts Saludables"
                 color  = "#2ca02c"
               }
-            ],
-            [
-              "AWS/ApplicationELB",
-              "UnHealthyHostCount",
-              "TargetGroup",
-              local.target_group_identifier,
-              "LoadBalancer",
-              local.alb_name,
-              {
-                stat   = "Average"
-                label  = "Hosts No Saludables"
-                color  = "#d62728"
-              }
             ]
           ]
           period = 60
           stat   = "Average"
           region = data.aws_region.current.name
-          title  = "Health Checks - Hosts Saludables vs No Saludables"
+          title  = "Estado de la Aplicacion - Si esta caida (HealthyHostCount = 0)"
           view   = "timeSeries"
           yAxis = {
             left = {
@@ -230,9 +217,17 @@ resource "aws_cloudwatch_dashboard" "dev_enhanced" {
             horizontal = [
               {
                 value     = 0
-                label     = "Sin hosts no saludables"
-                color     = "#2ca02c"
+                label     = "Aplicacion Caida (0 hosts saludables)"
+                color     = "#d62728"
                 fill      = "below"
+                visible   = true
+                yAxis     = "left"
+              },
+              {
+                value     = 1
+                label     = "Aplicacion Activa (>= 1 host saludable)"
+                color     = "#2ca02c"
+                fill      = "above"
                 visible   = true
                 yAxis     = "left"
               }
@@ -244,9 +239,9 @@ resource "aws_cloudwatch_dashboard" "dev_enhanced" {
       {
         type   = "metric"
         x      = 0
-        y      = 6
+        y      = 8
         width  = 12
-        height = 6
+        height = 8
 
         properties = {
           metrics = [
@@ -254,7 +249,12 @@ resource "aws_cloudwatch_dashboard" "dev_enhanced" {
               "AWS/EC2",
               "CPUUtilization",
               "AutoScalingGroupName",
-              module.autoscaling.autoscaling_group_name
+              module.autoscaling.autoscaling_group_name,
+              {
+                stat   = "Average"
+                label  = "CPU Usage"
+                color  = "#1f77b4"
+              }
             ]
           ]
           period = 300
@@ -269,85 +269,60 @@ resource "aws_cloudwatch_dashboard" "dev_enhanced" {
               label = "Percent"
             }
           }
+          annotations = {
+            horizontal = [
+              {
+                value     = 80
+                label     = "Umbral de Alarma (80%)"
+                color     = "#ff7f0e"
+                fill      = "above"
+                visible   = true
+                yAxis     = "left"
+              }
+            ]
+          }
         }
       },
-      # Widget 3: Errores HTTP 5xx
+      # Widget 3: RAM (Memoria) - Requiere CloudWatch Agent
       {
         type   = "metric"
         x      = 12
-        y      = 6
+        y      = 8
         width  = 12
-        height = 6
+        height = 8
 
         properties = {
           metrics = [
             [
-              "AWS/ApplicationELB",
-              "HTTPCode_Target_5XX_Count",
-              "LoadBalancer",
-              local.alb_name,
+              "CWAgent",
+              "mem_used_percent",
+              "AutoScalingGroupName",
+              module.autoscaling.autoscaling_group_name,
               {
-                stat   = "Sum"
-                label  = "Errores 5xx"
-                color  = "#ff7f0e"
+                stat   = "Average"
+                label  = "RAM Usage"
+                color  = "#9467bd"
               }
             ]
           ]
           period = 300
-          stat   = "Sum"
-          region = data.aws_region.current.name
-          title  = "Errores HTTP 5xx"
-          view   = "timeSeries"
-          yAxis = {
-            left = {
-              min = 0
-              label = "Cantidad"
-            }
-          }
-        }
-      },
-      # Widget 4: Estado de Alarmas - Hosts No Saludables
-      {
-        type   = "metric"
-        x      = 0
-        y      = 12
-        width  = 24
-        height = 6
-
-        properties = {
-          metrics = [
-            [
-              "AWS/ApplicationELB",
-              "UnHealthyHostCount",
-              "TargetGroup",
-              local.target_group_identifier,
-              "LoadBalancer",
-              local.alb_name,
-              {
-                stat   = "Average"
-                label  = "Hosts No Saludables (Alarma: > 0)"
-                color  = "#d62728"
-                yAxis  = "left"
-              }
-            ]
-          ]
-          period = 60
           stat   = "Average"
           region = data.aws_region.current.name
-          title  = "Estado de Health Checks - Alarma de Hosts No Saludables"
+          title  = "RAM Usage (%) - Requiere CloudWatch Agent"
           view   = "timeSeries"
           yAxis = {
             left = {
               min = 0
-              label = "Cantidad"
+              max = 100
+              label = "Percent"
             }
           }
           annotations = {
             horizontal = [
               {
-                value     = 0
-                label     = "Umbral de Alarma"
-                color     = "#ff0000"
+                value     = 80
+                label     = "Umbral de Alarma (80%)"
+                color     = "#ff7f0e"
                 fill      = "above"
                 visible   = true
                 yAxis     = "left"

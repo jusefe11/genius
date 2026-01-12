@@ -73,6 +73,30 @@ resource "aws_iam_role_policy" "secrets_manager_read" {
   })
 }
 
+# Política IAM para permitir que CloudWatch Agent envíe métricas
+resource "aws_iam_role_policy" "cloudwatch_agent" {
+  name = "${var.project_name}-${var.environment}-cloudwatch-agent"
+  role = aws_iam_role.ssm_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:PutMetricData"
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "cloudwatch:namespace" = "CWAgent"
+          }
+        }
+      }
+    ]
+  })
+}
+
 # Data source para obtener la región actual
 data "aws_region" "current" {}
 

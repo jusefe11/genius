@@ -1,6 +1,5 @@
 # Script para probar las metricas de CloudWatch
-# Genera trafico hacia el ALB para activar las metricas
-# Prueba cada indicador y alarma del dashboard
+# Dashboard simplificado: Estado de aplicacion, CPU y RAM
 
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "  Prueba de Metricas CloudWatch" -ForegroundColor Cyan
@@ -55,19 +54,14 @@ Write-Host "Pruebas por Metrica del Dashboard" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "METRICAS DEL DASHBOARD:" -ForegroundColor White
-Write-Host "  1. HealthyHostCount (Widget 1 - Hosts Saludables) [Alarma: no-healthy-hosts]" -ForegroundColor Yellow
-Write-Host "  2. UnHealthyHostCount (Widget 1 y 4 - Hosts No Saludables) [Alarma: unhealthy-hosts]" -ForegroundColor Yellow
-Write-Host "  3. CPUUtilization (Widget 2 - Uso de CPU) [Alarma: high-cpu]" -ForegroundColor Yellow
-Write-Host "  4. HTTPCode_Target_5XX_Count (Widget 3 - Errores 5xx) [Alarma: http-5xx-errors]" -ForegroundColor Yellow
-Write-Host ""
-Write-Host "PRUEBAS COMBINADAS:" -ForegroundColor White
-Write-Host "  5. Prueba completa: Todas las metricas" -ForegroundColor Cyan
+Write-Host "  1. Estado de la Aplicacion (HealthyHostCount) [Alarma: no-healthy-hosts]" -ForegroundColor Yellow
+Write-Host "  2. CPU Usage (CPUUtilization) [Alarma: high-cpu]" -ForegroundColor Yellow
+Write-Host "  3. RAM Usage (mem_used_percent) [Alarma: high-memory]" -ForegroundColor Yellow
 Write-Host ""
 Write-Host "VERIFICACION:" -ForegroundColor White
-Write-Host "  6. Verificar estado de alarmas" -ForegroundColor Green
-Write-Host "  7. Verificar metricas directamente (AWS CLI)" -ForegroundColor Green
+Write-Host "  4. Verificar estado de alarmas" -ForegroundColor Green
 Write-Host ""
-Write-Host "Selecciona una opcion (1-7):" -ForegroundColor Cyan
+Write-Host "Selecciona una opcion (1-4):" -ForegroundColor Cyan
 $option = Read-Host
 
 if (-not $option -or $option -eq "") {
@@ -77,15 +71,15 @@ if (-not $option -or $option -eq "") {
 # Ejecutar prueba segun opcion seleccionada
 switch ($option) {
     "1" {
-        # Prueba: HealthyHostCount
+        # Prueba: Estado de la Aplicacion (HealthyHostCount)
         Write-Host "`n========================================" -ForegroundColor Cyan
-        Write-Host "Prueba: HealthyHostCount" -ForegroundColor Yellow
+        Write-Host "Prueba: Estado de la Aplicacion" -ForegroundColor Yellow
         Write-Host "Metrica: AWS/ApplicationELB - HealthyHostCount (Average)" -ForegroundColor Yellow
-        Write-Host "Widget: 1 - Hosts Saludables" -ForegroundColor Yellow
+        Write-Host "Widget: 1 - Estado de la Aplicacion" -ForegroundColor Yellow
         Write-Host 'Alarma: genius-dev-no-healthy-hosts (umbral: menor a 1 host saludable)' -ForegroundColor Yellow
         Write-Host "========================================`n" -ForegroundColor Cyan
         
-        Write-Host 'Objetivo: Generar trafico para que haya hosts saludables mayor a 0' -ForegroundColor Cyan
+        Write-Host 'Objetivo: Generar trafico para verificar que la aplicacion esta activa' -ForegroundColor Cyan
         Write-Host "Cuantas peticiones? (recomendado: 50)" -ForegroundColor Cyan
         $numRequests = Read-Host
         if (-not $numRequests -or $numRequests -eq "") { $numRequests = 50 } else { $numRequests = [int]$numRequests }
@@ -109,10 +103,11 @@ switch ($option) {
         Write-Host "`nOK Prueba completada" -ForegroundColor Green
         Write-Host "  - Peticiones exitosas: $successCount" -ForegroundColor White
         Write-Host "  - Espera 2-5 minutos y verifica Widget 1" -ForegroundColor Yellow
-        Write-Host '  - Deberias ver HealthyHostCount mayor a 0 (linea verde)' -ForegroundColor White
+        Write-Host '  - Deberias ver HealthyHostCount mayor a 0 (aplicacion activa)' -ForegroundColor White
+        Write-Host "  - Si HealthyHostCount = 0, la aplicacion esta caida" -ForegroundColor Red
         Write-Host ""
         Write-Host "NOTA: Esta metrica tiene alarma 'genius-dev-no-healthy-hosts'" -ForegroundColor Cyan
-        Write-Host "      La alarma se activa cuando HealthyHostCount < 1 (sin hosts saludables)" -ForegroundColor Gray
+        Write-Host "      La alarma se activa cuando HealthyHostCount < 1 (aplicacion caida)" -ForegroundColor Gray
         Write-Host ""
         Write-Host "¿Quieres verificar el estado de la alarma? (S/N)" -ForegroundColor Cyan
         $checkAlarm = Read-Host
@@ -146,79 +141,9 @@ switch ($option) {
     }
     
     "2" {
-        # Prueba: UnHealthyHostCount
-        Write-Host "`n========================================" -ForegroundColor Cyan
-        Write-Host "Prueba: UnHealthyHostCount" -ForegroundColor Yellow
-        Write-Host "Metrica: AWS/ApplicationELB - UnHealthyHostCount (Average)" -ForegroundColor Yellow
-        Write-Host "Widget: 1 y 4 - Hosts No Saludables" -ForegroundColor Yellow
-        Write-Host 'Alarma: genius-dev-unhealthy-hosts (umbral: mayor a 0)' -ForegroundColor Yellow
-        Write-Host "========================================`n" -ForegroundColor Cyan
-        
-        Write-Host "Esta prueba requiere hacer que una instancia falle el health check" -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "Opciones:" -ForegroundColor Cyan
-        Write-Host '  A) Detener servicio en una instancia EC2 (requiere SSM/SSH)' -ForegroundColor White
-        Write-Host '  B) Solo verificar estado actual (sin modificar)' -ForegroundColor White
-        Write-Host ""
-        Write-Host 'Selecciona opcion (A/B):' -ForegroundColor Cyan
-        $subOption = Read-Host
-        
-        if ($subOption -eq "A" -or $subOption -eq "a") {
-            Write-Host "`nObteniendo instancias EC2..." -ForegroundColor Yellow
-            try {
-                $instancesOutput = & aws ec2 describe-instances `
-                    --filters "Name=tag:Name,Values=*genius-dev*" "Name=instance-state-name,Values=running" `
-                    --query 'Reservations[*].Instances[*].[InstanceId,PublicIpAddress]' `
-                    --output json 2>&1
-                if ($LASTEXITCODE -eq 0) {
-                    $instancesJson = $instancesOutput -join "`n"
-                } else {
-                    $instancesJson = $null
-                }
-                
-                if ($instancesJson) {
-                    $instances = $instancesJson | ConvertFrom-Json
-                    if ($instances.Count -gt 0) {
-                        $instanceId = $instances[0][0]
-                        Write-Host "OK Instancia encontrada: $instanceId" -ForegroundColor Green
-                        
-                        Write-Host "`nIMPORTANTE: Esto detendra temporalmente un servicio" -ForegroundColor Red
-                        Write-Host "Continuar? (S/N):" -ForegroundColor Cyan
-                        $confirm = Read-Host
-                        
-                        if ($confirm -eq "S" -or $confirm -eq "s") {
-                            Write-Host "`nDeteniendo servicio (simulando fallo)..." -ForegroundColor Yellow
-                            Write-Host '  Ejecutando: sudo systemctl stop servicio o docker stop container' -ForegroundColor Gray
-                            
-                            Write-Host "`nAjusta el comando segun tu aplicacion:" -ForegroundColor Yellow
-                            Write-Host "  aws ssm send-command --instance-ids $instanceId --document-name 'AWS-RunShellScript' --parameters 'commands=[\"sudo systemctl stop tu-servicio\"]'" -ForegroundColor White
-                            
-                            Write-Host "`nDespues de detener el servicio:" -ForegroundColor Cyan
-                            Write-Host "  1. Espera 1-2 minutos" -ForegroundColor White
-                            Write-Host "  2. Verifica Widget 1 y 4 - UnHealthyHostCount deberia aumentar" -ForegroundColor White
-                            Write-Host "  3. La alarma deberia activarse (estado ALARM)" -ForegroundColor White
-                            Write-Host "  4. Restaura el servicio cuando termines" -ForegroundColor Yellow
-                        }
-                    } else {
-                        Write-Host "ERROR No se encontraron instancias" -ForegroundColor Red
-                    }
-                } else {
-                    Write-Host "ERROR Error al obtener instancias. Verifica AWS CLI." -ForegroundColor Red
-                }
-            } catch {
-                Write-Host "ERROR Error: $_" -ForegroundColor Red
-            }
-        } else {
-            Write-Host "`nVerificando estado actual de UnHealthyHostCount..." -ForegroundColor Yellow
-            Write-Host "  Consulta el dashboard para ver el valor actual" -ForegroundColor White
-            Write-Host "  Widget 1 y 4 muestran esta metrica" -ForegroundColor White
-        }
-    }
-    
-    "3" {
         # Prueba: CPUUtilization
         Write-Host "`n========================================" -ForegroundColor Cyan
-        Write-Host "Prueba: CPUUtilization" -ForegroundColor Yellow
+        Write-Host "Prueba: CPU Usage" -ForegroundColor Yellow
         Write-Host "Metrica: AWS/EC2 - CPUUtilization (Average)" -ForegroundColor Yellow
         Write-Host "Widget: 2 - CPU Usage (%)" -ForegroundColor Yellow
         Write-Host 'Alarma: genius-dev-high-cpu (umbral: mayor a 80% durante 10 min)' -ForegroundColor Yellow
@@ -360,6 +285,38 @@ switch ($option) {
                     Write-Host ""
                     Write-Host "Para detener la carga:" -ForegroundColor Cyan
                     Write-Host "  aws ssm send-command --instance-ids $instanceId --document-name 'AWS-RunShellScript' --parameters 'commands=[\"sudo pkill stress-ng\"]'" -ForegroundColor White
+                    
+                    Write-Host ""
+                    Write-Host "¿Quieres verificar el estado de la alarma? (S/N)" -ForegroundColor Cyan
+                    $checkAlarm = Read-Host
+                    if ($checkAlarm -eq "S" -or $checkAlarm -eq "s") {
+                        Write-Host "`nVerificando estado de la alarma..." -ForegroundColor Yellow
+                        try {
+                            $alarmOutput = & aws cloudwatch describe-alarms --alarm-names "genius-dev-high-cpu" --query 'MetricAlarms[0]' --output json 2>&1
+                            if ($LASTEXITCODE -eq 0) {
+                                $alarm = ($alarmOutput -join "`n") | ConvertFrom-Json
+                                if ($alarm) {
+                                    $state = $alarm.StateValue
+                                    $color = switch ($state) {
+                                        "OK" { "Green" }
+                                        "ALARM" { "Red" }
+                                        default { "Yellow" }
+                                    }
+                                    Write-Host "  Estado actual: $state" -ForegroundColor $color
+                                    Write-Host "  Razon: $($alarm.StateReason)" -ForegroundColor Gray
+                                    Write-Host "  Umbral: CPU > 80% durante 10 minutos" -ForegroundColor Gray
+                                    Write-Host ""
+                                    Write-Host "NOTA: La alarma puede tardar 10 minutos en actualizarse" -ForegroundColor Yellow
+                                } else {
+                                    Write-Host "  ERROR Alarma no encontrada" -ForegroundColor Red
+                                }
+                            } else {
+                                Write-Host "  ERROR No se pudo consultar la alarma" -ForegroundColor Red
+                            }
+                        } catch {
+                            Write-Host "  ERROR: $_" -ForegroundColor Red
+                        }
+                    }
                 } else {
                     Write-Host "ERROR Error al iniciar carga de CPU. Verifica permisos SSM." -ForegroundColor Red
                 }
@@ -371,195 +328,27 @@ switch ($option) {
         }
     }
     
-    "4" {
-        # Prueba: HTTPCode_Target_5XX_Count
+    "3" {
+        # Prueba: RAM Usage
         Write-Host "`n========================================" -ForegroundColor Cyan
-        Write-Host "Prueba: HTTPCode_Target_5XX_Count" -ForegroundColor Yellow
-        Write-Host "Metrica: AWS/ApplicationELB - HTTPCode_Target_5XX_Count (Sum)" -ForegroundColor Yellow
-        Write-Host "Widget: 3 - Errores HTTP 5xx" -ForegroundColor Yellow
-        Write-Host 'Alarma: genius-dev-http-5xx-errors (umbral: mayor a 5 errores en 5 min)' -ForegroundColor Yellow
+        Write-Host "Prueba: RAM Usage" -ForegroundColor Yellow
+        Write-Host "Metrica: CWAgent - mem_used_percent (Average)" -ForegroundColor Yellow
+        Write-Host "Widget: 3 - RAM Usage (%)" -ForegroundColor Yellow
+        Write-Host 'Alarma: genius-dev-high-memory (umbral: mayor a 80% durante 10 min)' -ForegroundColor Yellow
         Write-Host "========================================`n" -ForegroundColor Cyan
         
-        Write-Host "Objetivo: Generar errores 5xx para activar metrica y alarma" -ForegroundColor Cyan
+        Write-Host "Objetivo: Generar carga de RAM para activar metrica y alarma" -ForegroundColor Cyan
         Write-Host ""
-        Write-Host "IMPORTANTE: Para generar errores 5xx reales, necesitas:" -ForegroundColor Yellow
-        Write-Host "  1. Que tu aplicacion devuelva 500, 502, 503 o 504" -ForegroundColor White
-        Write-Host "  2. O detener temporalmente el servicio en una instancia" -ForegroundColor White
-        Write-Host ""
-        Write-Host "Este script intentara generar errores, pero si tu aplicacion" -ForegroundColor Yellow
-        Write-Host "devuelve 404 en lugar de 5xx, la alarma no se activara." -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "Cuantas peticiones generar? (recomendado: 10 para asegurar > 5 errores)" -ForegroundColor Cyan
-        $numRequests = Read-Host
-        if (-not $numRequests -or $numRequests -eq "") { $numRequests = 10 } else { $numRequests = [int]$numRequests }
-        
-        Write-Host "`nGenerando $numRequests peticiones..." -ForegroundColor Yellow
-        Write-Host "Intentando diferentes metodos para generar errores 5xx..." -ForegroundColor Gray
-        
-        $errorCount = 0
-        $error4xxCount = 0
-        $successCount = 0
-        
-        for ($i = 1; $i -le $numRequests; $i++) {
-            try {
-                # Intentar diferentes metodos que podrian generar 5xx
-                $methods = @("GET", "POST", "PUT", "DELETE")
-                $method = $methods[($i - 1) % $methods.Length]
-                
-                # Intentar diferentes endpoints que podrian fallar
-                $endpoints = @(
-                    "/endpoint-inexistente-$i",
-                    "/api/error",
-                    "/error",
-                    "/test-error",
-                    "/internal-error"
-                )
-                $endpoint = $endpoints[($i - 1) % $endpoints.Length]
-                
-                $response = Invoke-WebRequest -Uri "$albUrl$endpoint" -Method $method -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
-                
-                if ($response.StatusCode -ge 500) {
-                    Write-Host "OK [$i/$numRequests] Error 5xx: $($response.StatusCode)" -ForegroundColor Red
-                    $errorCount++
-                } elseif ($response.StatusCode -ge 400) {
-                    Write-Host "ADV [$i/$numRequests] Error 4xx: $($response.StatusCode) (no cuenta para la alarma)" -ForegroundColor Yellow
-                    $error4xxCount++
-                } else {
-                    Write-Host "OK [$i/$numRequests] Status: $($response.StatusCode) (exitoso)" -ForegroundColor Green
-                    $successCount++
-                }
-            } catch {
-                $statusCode = $null
-                if ($_.Exception.Response) {
-                    $statusCode = $_.Exception.Response.StatusCode.value__
-                }
-                
-                if ($statusCode -ge 500) {
-                    Write-Host "OK [$i/$numRequests] Error 5xx capturado: $statusCode" -ForegroundColor Red
-                    $errorCount++
-                } elseif ($statusCode -ge 400) {
-                    Write-Host "ADV [$i/$numRequests] Error 4xx: $statusCode (no cuenta para la alarma)" -ForegroundColor Yellow
-                    $error4xxCount++
-                } else {
-                    Write-Host "ADV [$i/$numRequests] Error de conexion: $($_.Exception.Message)" -ForegroundColor Yellow
-                }
-            }
-            Start-Sleep -Milliseconds 500
-        }
-        
-        Write-Host "`n========================================" -ForegroundColor Cyan
-        Write-Host "Resumen de la prueba" -ForegroundColor Cyan
-        Write-Host "========================================" -ForegroundColor Cyan
-        Write-Host "  - Errores 5xx detectados: $errorCount" -ForegroundColor $(if ($errorCount -gt 0) { "Red" } else { "Yellow" })
-        Write-Host "  - Errores 4xx detectados: $error4xxCount" -ForegroundColor Yellow
-        Write-Host "  - Peticiones exitosas: $successCount" -ForegroundColor Green
+        Write-Host "IMPORTANTE: Esta metrica requiere CloudWatch Agent instalado" -ForegroundColor Yellow
+        Write-Host "  Si no ves datos, verifica que CloudWatch Agent este corriendo" -ForegroundColor Yellow
         Write-Host ""
         
-        if ($errorCount -lt 6) {
-            Write-Host "ADVERTENCIA: Se detectaron menos de 6 errores 5xx" -ForegroundColor Red
-            Write-Host "La alarma requiere mas de 5 errores 5xx en 5 minutos" -ForegroundColor Yellow
-            Write-Host ""
-            Write-Host "Para generar errores 5xx reales:" -ForegroundColor Cyan
-            Write-Host "  1. Detener temporalmente el servicio en una instancia:" -ForegroundColor White
-            Write-Host "     aws ssm send-command --instance-ids <instance-id> --document-name 'AWS-RunShellScript' --parameters 'commands=[\"sudo systemctl stop tu-servicio\"]'" -ForegroundColor Gray
-            Write-Host "  2. O modificar temporalmente tu aplicacion para que devuelva 500" -ForegroundColor White
-            Write-Host "  3. O hacer peticiones que realmente causen errores del servidor" -ForegroundColor White
-        } else {
-            Write-Host "OK Se generaron suficientes errores 5xx para activar la alarma" -ForegroundColor Green
-        }
-        
-        Write-Host ""
-        Write-Host "Espera 5-10 minutos y verifica:" -ForegroundColor Yellow
-        Write-Host "  - Widget 3 en el dashboard" -ForegroundColor White
-        Write-Host "  - Estado de la alarma: genius-dev-http-5xx-errors" -ForegroundColor White
-        Write-Host ""
-        Write-Host "¿Quieres verificar el estado de la alarma ahora? (S/N)" -ForegroundColor Cyan
-        $checkAlarm = Read-Host
-        if ($checkAlarm -eq "S" -or $checkAlarm -eq "s") {
-            Write-Host "`nVerificando estado de la alarma..." -ForegroundColor Yellow
-            try {
-                $alarmOutput = & aws cloudwatch describe-alarms --alarm-names "genius-dev-http-5xx-errors" --query 'MetricAlarms[0]' --output json 2>&1
-                if ($LASTEXITCODE -eq 0) {
-                    $alarm = ($alarmOutput -join "`n") | ConvertFrom-Json
-                    if ($alarm) {
-                        $state = $alarm.StateValue
-                        $color = switch ($state) {
-                            "OK" { "Green" }
-                            "ALARM" { "Red" }
-                            default { "Yellow" }
-                        }
-                        Write-Host "  Estado actual: $state" -ForegroundColor $color
-                        Write-Host "  Razon: $($alarm.StateReason)" -ForegroundColor Gray
-                        Write-Host ""
-                        Write-Host "NOTA: La alarma puede tardar 5 minutos en actualizarse" -ForegroundColor Yellow
-                        Write-Host "      Si el estado es OK, espera 5-10 minutos y verifica de nuevo" -ForegroundColor Yellow
-                    } else {
-                        Write-Host "  ERROR Alarma no encontrada" -ForegroundColor Red
-                    }
-                } else {
-                    Write-Host "  ERROR No se pudo consultar la alarma" -ForegroundColor Red
-                }
-            } catch {
-                Write-Host "  ERROR: $_" -ForegroundColor Red
-            }
-        }
-    }
-    
-    "5" {
-        # Prueba completa: Todas las metricas
-        Write-Host "`n========================================" -ForegroundColor Cyan
-        Write-Host "Prueba Completa: Todas las Metricas" -ForegroundColor Yellow
-        Write-Host "========================================`n" -ForegroundColor Cyan
-        
-        Write-Host "Esta prueba ejecutara pruebas para todas las metricas:" -ForegroundColor Cyan
-        Write-Host "  1. HealthyHostCount" -ForegroundColor White
-        Write-Host "  2. UnHealthyHostCount" -ForegroundColor White
-        Write-Host "  3. CPUUtilization" -ForegroundColor White
-        Write-Host "  4. HTTPCode_Target_5XX_Count" -ForegroundColor White
-        Write-Host ""
-        Write-Host "Continuar? (S/N):" -ForegroundColor Cyan
-        $confirm = Read-Host
-        
-        if ($confirm -ne "S" -and $confirm -ne "s") {
-            Write-Host "Prueba cancelada." -ForegroundColor Yellow
-            break
-        }
-        
-        # Fase 1: HealthyHostCount
-        Write-Host "`n[Fase 1/4] Probando HealthyHostCount..." -ForegroundColor Cyan
-        Write-Host "Generando 50 peticiones HTTP..." -ForegroundColor Yellow
-        for ($i = 1; $i -le 50; $i++) {
-            try {
-                Invoke-WebRequest -Uri $albUrl -Method GET -UseBasicParsing -TimeoutSec 5 | Out-Null
-                Write-Host "." -NoNewline -ForegroundColor Green
-            } catch {
-                Write-Host "x" -NoNewline -ForegroundColor Red
-            }
-            if ($i % 10 -eq 0) { Write-Host " $i/50" -ForegroundColor Gray }
-            Start-Sleep -Milliseconds 200
-        }
-        Write-Host "`nOK Fase 1 completada" -ForegroundColor Green
-        
-        # Fase 2: HTTPCode_Target_5XX_Count
-        Write-Host "`n[Fase 2/4] Probando HTTPCode_Target_5XX_Count..." -ForegroundColor Cyan
-        Write-Host "Generando 6 peticiones que puedan fallar..." -ForegroundColor Yellow
-        for ($i = 1; $i -le 6; $i++) {
-            try {
-                Invoke-WebRequest -Uri "$albUrl/endpoint-inexistente-$i" -Method GET -UseBasicParsing -TimeoutSec 5 | Out-Null
-            } catch {
-                Write-Host "OK Error $i/6" -ForegroundColor Yellow
-            }
-            Start-Sleep -Seconds 1
-        }
-        Write-Host "OK Fase 2 completada" -ForegroundColor Green
-        
-        # Fase 3: CPUUtilization
-        Write-Host "`n[Fase 3/4] Probando CPUUtilization..." -ForegroundColor Cyan
-        Write-Host "Iniciando carga de CPU en instancia EC2..." -ForegroundColor Yellow
+        # Obtener instancias
+        Write-Host "Obteniendo instancias EC2..." -ForegroundColor Yellow
         try {
             $instancesOutput = & aws ec2 describe-instances `
                 --filters "Name=tag:Name,Values=*genius-dev*" "Name=instance-state-name,Values=running" `
-                --query 'Reservations[*].Instances[*].[InstanceId]' `
+                --query 'Reservations[*].Instances[*].[InstanceId,PublicIpAddress]' `
                 --output json 2>&1
             if ($LASTEXITCODE -eq 0) {
                 $instancesJson = $instancesOutput -join "`n"
@@ -567,52 +356,146 @@ switch ($option) {
                 $instancesJson = $null
             }
             
-            if ($instancesJson) {
-                $instances = $instancesJson | ConvertFrom-Json
-                if ($instances.Count -gt 0) {
-                    $instanceId = $instances[0][0]
-                    Write-Host "  Instalando stress-ng..." -ForegroundColor Gray
-                    aws ssm send-command `
-                        --instance-ids $instanceId `
-                        --document-name "AWS-RunShellScript" `
-                        --parameters "commands=['sudo yum install -y stress-ng']" `
-                        --output json | Out-Null
-                    Start-Sleep -Seconds 5
-                    
-                    Write-Host "  Iniciando carga de CPU..." -ForegroundColor Gray
-                    aws ssm send-command `
-                        --instance-ids $instanceId `
-                        --document-name "AWS-RunShellScript" `
-                        --parameters "commands=['nohup sudo stress-ng --cpu 4 --timeout 600s > /tmp/stress-ng.log 2>&1 &']" `
-                        --output json | Out-Null
-                    Write-Host "OK Fase 3 completada (carga corriendo en segundo plano)" -ForegroundColor Green
+            if (-not $instancesJson) {
+                Write-Host "ERROR Error: No se encontraron instancias o AWS CLI no esta configurado" -ForegroundColor Red
+                break
+            }
+            
+            $instances = $instancesJson | ConvertFrom-Json
+            if ($instances.Count -eq 0) {
+                Write-Host "ERROR Error: No se encontraron instancias en ejecucion" -ForegroundColor Red
+                break
+            }
+            
+            Write-Host "OK Instancias encontradas:" -ForegroundColor Green
+            $instances | ForEach-Object { Write-Host "  - Instance ID: $($_[0]) - IP: $($_[1])" -ForegroundColor White }
+            
+            $instanceId = $instances[0][0]
+            Write-Host "`nUsando instancia: $instanceId" -ForegroundColor Cyan
+            
+            # Verificar si CloudWatch Agent esta instalado
+            Write-Host "`nVerificando CloudWatch Agent..." -ForegroundColor Yellow
+            $checkAgentOutput = & aws ssm send-command `
+                --instance-ids $instanceId `
+                --document-name "AWS-RunShellScript" `
+                --parameters "commands=['systemctl status amazon-cloudwatch-agent | grep Active']" `
+                --output json 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $checkAgentResult = ($checkAgentOutput -join "`n") | ConvertFrom-Json
+                $checkAgentCommandId = $checkAgentResult.Command.CommandId
+                Start-Sleep -Seconds 3
+                
+                $checkAgentStatusOutput = & aws ssm get-command-invocation `
+                    --command-id $checkAgentCommandId `
+                    --instance-id $instanceId `
+                    --output json 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    $checkAgentStatus = ($checkAgentStatusOutput -join "`n") | ConvertFrom-Json
+                    if ($checkAgentStatus.Status -eq "Success") {
+                        $agentStatus = $checkAgentStatus.StandardOutputContent.Trim()
+                        if ($agentStatus -and $agentStatus -like "*active*") {
+                            Write-Host "OK CloudWatch Agent esta corriendo" -ForegroundColor Green
+                        } else {
+                            Write-Host "ADV CloudWatch Agent puede no estar corriendo" -ForegroundColor Yellow
+                            Write-Host "  Las metricas de RAM pueden no aparecer" -ForegroundColor Yellow
+                        }
+                    }
+                }
+            }
+            
+            # Instalar stress-ng si no esta instalado
+            Write-Host "`nInstalando stress-ng..." -ForegroundColor Yellow
+            $installOutput = & aws ssm send-command `
+                --instance-ids $instanceId `
+                --document-name "AWS-RunShellScript" `
+                --parameters "commands=['sudo yum install -y stress-ng']" `
+                --output json 2>&1
+            if ($LASTEXITCODE -eq 0) {
+                $installResult = ($installOutput -join "`n") | ConvertFrom-Json
+            } else {
+                $installResult = $null
+            }
+            
+            if ($installResult) {
+                Start-Sleep -Seconds 5
+                Write-Host "OK stress-ng instalado" -ForegroundColor Green
+                
+                # Generar carga de RAM
+                Write-Host "`nGenerando carga de RAM por 10 minutos..." -ForegroundColor Yellow
+                Write-Host "Esto se ejecutara en segundo plano en la instancia." -ForegroundColor Cyan
+                
+                $ramOutput = & aws ssm send-command `
+                    --instance-ids $instanceId `
+                    --document-name "AWS-RunShellScript" `
+                    --parameters "commands=['nohup sudo stress-ng --vm 2 --vm-bytes 2G --timeout 600s > /tmp/stress-ng-ram.log 2>&1 &']" `
+                    --output json 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    $ramResult = ($ramOutput -join "`n") | ConvertFrom-Json
                 } else {
-                    Write-Host "ADV Fase 3 omitida: No se encontraron instancias" -ForegroundColor Yellow
+                    $ramResult = $null
+                }
+                
+                if ($ramResult) {
+                    $ramCommandId = $ramResult.Command.CommandId
+                    Write-Host "OK Comando enviado (Command ID: $ramCommandId)" -ForegroundColor Green
+                    
+                    Write-Host "`nEspera 5-10 minutos para que:" -ForegroundColor Yellow
+                    Write-Host "  - Las metricas se actualicen en CloudWatch (periodo: 5 minutos)" -ForegroundColor White
+                    Write-Host "  - Widget 3 muestre RAM cerca de 100%" -ForegroundColor White
+                    Write-Host "  - La alarma se active (despues de 10 minutos con RAM > 80%)" -ForegroundColor White
+                    Write-Host ""
+                    Write-Host "IMPORTANTE:" -ForegroundColor Red
+                    Write-Host "  - Las metricas de RAM requieren CloudWatch Agent" -ForegroundColor Yellow
+                    Write-Host "  - El periodo de la metrica es de 5 minutos (300 segundos)" -ForegroundColor Yellow
+                    Write-Host "  - Puede tardar 5-10 minutos en aparecer en el dashboard" -ForegroundColor Yellow
+                    Write-Host ""
+                    Write-Host "Para detener la carga:" -ForegroundColor Cyan
+                    Write-Host "  aws ssm send-command --instance-ids $instanceId --document-name 'AWS-RunShellScript' --parameters 'commands=[\"sudo pkill stress-ng\"]'" -ForegroundColor White
+                    
+                    Write-Host ""
+                    Write-Host "¿Quieres verificar el estado de la alarma? (S/N)" -ForegroundColor Cyan
+                    $checkAlarm = Read-Host
+                    if ($checkAlarm -eq "S" -or $checkAlarm -eq "s") {
+                        Write-Host "`nVerificando estado de la alarma..." -ForegroundColor Yellow
+                        try {
+                            $alarmOutput = & aws cloudwatch describe-alarms --alarm-names "genius-dev-high-memory" --query 'MetricAlarms[0]' --output json 2>&1
+                            if ($LASTEXITCODE -eq 0) {
+                                $alarm = ($alarmOutput -join "`n") | ConvertFrom-Json
+                                if ($alarm) {
+                                    $state = $alarm.StateValue
+                                    $color = switch ($state) {
+                                        "OK" { "Green" }
+                                        "ALARM" { "Red" }
+                                        default { "Yellow" }
+                                    }
+                                    Write-Host "  Estado actual: $state" -ForegroundColor $color
+                                    Write-Host "  Razon: $($alarm.StateReason)" -ForegroundColor Gray
+                                    Write-Host "  Umbral: RAM > 80% durante 10 minutos" -ForegroundColor Gray
+                                    Write-Host ""
+                                    Write-Host "NOTA: La alarma puede tardar 10 minutos en actualizarse" -ForegroundColor Yellow
+                                } else {
+                                    Write-Host "  ERROR Alarma no encontrada" -ForegroundColor Red
+                                    Write-Host "  Ejecuta 'terraform apply' para crear la alarma" -ForegroundColor Yellow
+                                }
+                            } else {
+                                Write-Host "  ERROR No se pudo consultar la alarma" -ForegroundColor Red
+                            }
+                        } catch {
+                            Write-Host "  ERROR: $_" -ForegroundColor Red
+                        }
+                    }
+                } else {
+                    Write-Host "ERROR Error al iniciar carga de RAM. Verifica permisos SSM." -ForegroundColor Red
                 }
             } else {
-                Write-Host "ADV Fase 3 omitida: Error al obtener instancias" -ForegroundColor Yellow
+                Write-Host "ERROR Error al instalar stress-ng. Verifica permisos SSM." -ForegroundColor Red
             }
         } catch {
-            Write-Host "ADV Fase 3 omitida: $_" -ForegroundColor Yellow
+            Write-Host "ERROR Error: $_" -ForegroundColor Red
         }
-        
-        # Fase 4: UnHealthyHostCount (solo verificacion)
-        Write-Host "`n[Fase 4/4] Verificando UnHealthyHostCount..." -ForegroundColor Cyan
-        Write-Host "  Esta metrica se verifica automaticamente" -ForegroundColor Gray
-        Write-Host "  Si hay hosts no saludables, aparecera en Widget 1 y 4" -ForegroundColor Gray
-        Write-Host "OK Fase 4 completada" -ForegroundColor Green
-        
-        Write-Host "`n========================================" -ForegroundColor Cyan
-        Write-Host "OK Prueba completa finalizada" -ForegroundColor Green
-        Write-Host "========================================" -ForegroundColor Cyan
-        Write-Host "`nTiempos de espera:" -ForegroundColor Yellow
-        Write-Host "  - HealthyHostCount: 2-5 minutos" -ForegroundColor White
-        Write-Host "  - HTTPCode_Target_5XX_Count: 5-10 minutos" -ForegroundColor White
-        Write-Host "  - CPUUtilization: 10-15 minutos" -ForegroundColor White
-        Write-Host "  - UnHealthyHostCount: Verificar en dashboard" -ForegroundColor White
     }
     
-    "6" {
+    "4" {
         # Verificar alarmas
         Write-Host "`n========================================" -ForegroundColor Cyan
         Write-Host "Estado de Alarmas CloudWatch" -ForegroundColor Cyan
@@ -620,9 +503,8 @@ switch ($option) {
         
         $alarms = @(
             "genius-dev-no-healthy-hosts",
-            "genius-dev-unhealthy-hosts",
-            "genius-dev-http-5xx-errors",
-            "genius-dev-high-cpu"
+            "genius-dev-high-cpu",
+            "genius-dev-high-memory"
         )
         
         foreach ($alarmName in $alarms) {
@@ -653,26 +535,6 @@ switch ($option) {
         }
     }
     
-    "7" {
-        # Verificar metricas directamente
-        Write-Host "`n========================================" -ForegroundColor Cyan
-        Write-Host "Verificacion de Metricas (AWS CLI)" -ForegroundColor Cyan
-        Write-Host "========================================`n" -ForegroundColor Cyan
-        
-        Write-Host "Esta opcion te permite ver las metricas directamente desde AWS CLI" -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "Metricas disponibles:" -ForegroundColor Cyan
-        Write-Host "  1. HealthyHostCount" -ForegroundColor White
-        Write-Host "  2. UnHealthyHostCount" -ForegroundColor White
-        Write-Host "  3. CPUUtilization" -ForegroundColor White
-        Write-Host "  4. HTTPCode_Target_5XX_Count" -ForegroundColor White
-        Write-Host ""
-        Write-Host "Consulta test-metrics-guide.md para comandos especificos de cada metrica." -ForegroundColor Yellow
-        Write-Host ""
-        Write-Host "Ejemplo rapido - Ver errores 5xx:" -ForegroundColor Cyan
-        Write-Host "  aws cloudwatch get-metric-statistics --namespace AWS/ApplicationELB --metric-name HTTPCode_Target_5XX_Count ..." -ForegroundColor White
-    }
-    
     default {
         Write-Host "Opcion invalida. Ejecutando prueba basica..." -ForegroundColor Yellow
         $option = "1"
@@ -680,7 +542,7 @@ switch ($option) {
 }
 
 # Mostrar resumen solo si se ejecuto prueba de trafico
-if ($option -eq "1" -or $option -eq "5") {
+if ($option -eq "1") {
     if (Get-Variable -Name successCount -ErrorAction SilentlyContinue) {
         if ($null -ne $successCount) {
             Write-Host "`n========================================" -ForegroundColor Cyan
@@ -702,16 +564,15 @@ if ($option -eq "1" -or $option -eq "5") {
 }
 
 # Mostrar instrucciones segun la prueba ejecutada
-if ($option -ne "6" -and $option -ne "7" -and $option -ne "2") {
+if ($option -ne "4") {
     Write-Host "`n========================================" -ForegroundColor Cyan
     Write-Host "Proximos pasos" -ForegroundColor Cyan
     Write-Host "========================================" -ForegroundColor Cyan
     
     $waitTime = switch ($option) {
         "1" { "2-5 minutos" }
+        "2" { "10-15 minutos" }
         "3" { "10-15 minutos" }
-        "4" { "5-10 minutos" }
-        "5" { "10-15 minutos" }
         default { "2-5 minutos" }
     }
     
@@ -723,21 +584,18 @@ if ($option -ne "6" -and $option -ne "7" -and $option -ne "2") {
     Write-Host "`nWidgets a verificar:" -ForegroundColor Cyan
     switch ($option) {
         "1" {
-            Write-Host "  - Widget 1: HealthyHostCount (linea verde)" -ForegroundColor White
+            Write-Host "  - Widget 1: Estado de la Aplicacion (HealthyHostCount)" -ForegroundColor White
+            Write-Host "    Si HealthyHostCount = 0: Aplicacion caida" -ForegroundColor Red
+            Write-Host "    Si HealthyHostCount >= 1: Aplicacion activa" -ForegroundColor Green
         }
-        "3" {
-            Write-Host "  - Widget 2: CPUUtilization" -ForegroundColor White
+        "2" {
+            Write-Host "  - Widget 2: CPU Usage (%)" -ForegroundColor White
             Write-Host "  - Alarma: genius-dev-high-cpu" -ForegroundColor White
         }
-        "4" {
-            Write-Host "  - Widget 3: HTTPCode_Target_5XX_Count" -ForegroundColor White
-            Write-Host "  - Alarma: genius-dev-http-5xx-errors" -ForegroundColor White
-        }
-        "5" {
-            Write-Host "  - Widget 1: HealthyHostCount y UnHealthyHostCount" -ForegroundColor White
-            Write-Host "  - Widget 2: CPUUtilization" -ForegroundColor White
-            Write-Host "  - Widget 3: HTTPCode_Target_5XX_Count" -ForegroundColor White
-            Write-Host "  - Widget 4: UnHealthyHostCount (alarma)" -ForegroundColor White
+        "3" {
+            Write-Host "  - Widget 3: RAM Usage (%)" -ForegroundColor White
+            Write-Host "  - Alarma: genius-dev-high-memory" -ForegroundColor White
+            Write-Host "  - NOTA: Requiere CloudWatch Agent instalado" -ForegroundColor Yellow
         }
     }
     
@@ -745,12 +603,11 @@ if ($option -ne "6" -and $option -ne "7" -and $option -ne "2") {
     Write-Host "`nDashboard URL:" -ForegroundColor Cyan
     Write-Host $dashboardUrl -ForegroundColor White
     
-    Write-Host "`nQuieres abrir el dashboard en tu navegador? (S/N)" -ForegroundColor Cyan
+    Write-Host "`n¿Quieres abrir el dashboard en tu navegador? (S/N)" -ForegroundColor Cyan
     $openBrowser = Read-Host
     if ($openBrowser -eq "S" -or $openBrowser -eq "s" -or $openBrowser -eq "Y" -or $openBrowser -eq "y") {
         Start-Process $dashboardUrl
     }
     
     Write-Host "`nListo! Revisa CloudWatch en unos minutos." -ForegroundColor Green
-    Write-Host "`nTip: Consulta test-metrics-guide.md para mas detalles sobre cada prueba." -ForegroundColor Cyan
 }

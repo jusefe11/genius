@@ -107,6 +107,53 @@ fi
 # Instalar jq para parsear JSON (usado para procesar secretos)
 yum install -y jq
 
+# Instalar CloudWatch Agent para metricas de RAM
+echo "Instalando CloudWatch Agent..." >> $LOG_FILE
+wget https://s3.amazonaws.com/amazoncloudwatch-agent/amazon_linux/amd64/latest/amazon-cloudwatch-agent.rpm -O /tmp/amazon-cloudwatch-agent.rpm 2>>$LOG_FILE
+if [ $? -eq 0 ]; then
+    rpm -U /tmp/amazon-cloudwatch-agent.rpm 2>>$LOG_FILE
+    
+    # Crear configuracion para metricas de RAM y CPU
+    mkdir -p /opt/aws/amazon-cloudwatch-agent/etc
+    cat > /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json <<'CWAGENTEOF'
+{
+  "metrics": {
+    "namespace": "CWAgent",
+    "metrics_collected": {
+      "mem": {
+        "measurement": [
+          "mem_used_percent"
+        ]
+      },
+      "cpu": {
+        "measurement": [
+          "cpu_usage_idle",
+          "cpu_usage_iowait",
+          "cpu_usage_user",
+          "cpu_usage_system"
+        ],
+        "totalcpu": false
+      }
+    }
+  }
+}
+CWAGENTEOF
+    
+    # Iniciar CloudWatch Agent
+    /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+      -a fetch-config \
+      -m ec2 \
+      -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json \
+      -s 2>>$LOG_FILE
+    
+    # Habilitar CloudWatch Agent para que inicie automaticamente
+    systemctl enable amazon-cloudwatch-agent 2>>$LOG_FILE
+    
+    echo "CloudWatch Agent instalado y configurado" >> $LOG_FILE
+else
+    echo "ADVERTENCIA: No se pudo instalar CloudWatch Agent" >> $LOG_FILE
+fi
+
 # Instalar herramientas básicas
 yum install -y docker
 
