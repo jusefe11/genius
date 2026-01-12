@@ -107,12 +107,74 @@ resource "aws_cloudwatch_dashboard" "main" {
 
   dashboard_body = jsonencode({
     widgets = [
-      # Widget 1: CPU Usage (Gráfico línea) - AutoScalingGroupName como dimensión
+      # Widget 1: Health Checks - Hosts Saludables vs No Saludables
       {
         type   = "metric"
         x      = 0
         y      = 0
         width  = 24
+        height = 6
+
+        properties = {
+          metrics = [
+            [
+              "AWS/ApplicationELB",
+              "HealthyHostCount",
+              "TargetGroup",
+              var.target_group_name,
+              "LoadBalancer",
+              local.alb_name,
+              {
+                stat   = "Average"
+                label  = "Hosts Saludables"
+                color  = "#2ca02c"
+              }
+            ],
+            [
+              "AWS/ApplicationELB",
+              "UnHealthyHostCount",
+              "TargetGroup",
+              var.target_group_name,
+              "LoadBalancer",
+              local.alb_name,
+              {
+                stat   = "Average"
+                label  = "Hosts No Saludables"
+                color  = "#d62728"
+              }
+            ]
+          ]
+          period = 60
+          stat   = "Average"
+          region = data.aws_region.current.name
+          title  = "Health Checks - Hosts Saludables vs No Saludables"
+          view   = "timeSeries"
+          yAxis = {
+            left = {
+              min = 0
+              label = "Cantidad de Hosts"
+            }
+          }
+          annotations = {
+            horizontal = [
+              {
+                value     = 0
+                label     = "Sin hosts no saludables"
+                color     = "#2ca02c"
+                fill      = "below"
+                visible   = true
+                yAxis     = "left"
+              }
+            ]
+          }
+        }
+      },
+      # Widget 2: CPU Usage (Gráfico línea) - AutoScalingGroupName como dimensión
+      {
+        type   = "metric"
+        x      = 0
+        y      = 6
+        width  = 12
         height = 6
 
         properties = {
@@ -135,6 +197,91 @@ resource "aws_cloudwatch_dashboard" "main" {
               max = 100
               label = "Percent"
             }
+          }
+        }
+      },
+      # Widget 3: Errores HTTP 5xx
+      {
+        type   = "metric"
+        x      = 12
+        y      = 6
+        width  = 12
+        height = 6
+
+        properties = {
+          metrics = [
+            [
+              "AWS/ApplicationELB",
+              "HTTPCode_Target_5XX_Count",
+              "LoadBalancer",
+              local.alb_name,
+              {
+                stat   = "Sum"
+                label  = "Errores 5xx"
+                color  = "#ff7f0e"
+              }
+            ]
+          ]
+          period = 300
+          stat   = "Sum"
+          region = data.aws_region.current.name
+          title  = "Errores HTTP 5xx"
+          view   = "timeSeries"
+          yAxis = {
+            left = {
+              min = 0
+              label = "Cantidad"
+            }
+          }
+        }
+      },
+      # Widget 4: Estado de Alarmas
+      {
+        type   = "metric"
+        x      = 0
+        y      = 12
+        width  = 24
+        height = 6
+
+        properties = {
+          metrics = [
+            [
+              "AWS/ApplicationELB",
+              "UnHealthyHostCount",
+              "TargetGroup",
+              var.target_group_name,
+              "LoadBalancer",
+              local.alb_name,
+              {
+                stat   = "Average"
+                label  = "Hosts No Saludables (Alarma: > 0)"
+                color  = "#d62728"
+                yAxis  = "left"
+              }
+            ]
+          ]
+          period = 60
+          stat   = "Average"
+          region = data.aws_region.current.name
+          title  = "Estado de Health Checks - Alarma de Hosts No Saludables"
+          view   = "timeSeries"
+          yAxis = {
+            left = {
+              min = 0
+              label = "Cantidad"
+            }
+          }
+          annotations = {
+            horizontal = [
+              {
+                value     = 0
+                label     = "Umbral de Alarma"
+                color     = "#ff0000"
+                fill      = "above"
+                visible   = true
+                yAxis     = "left"
+              }
+            ]
           }
         }
       }
