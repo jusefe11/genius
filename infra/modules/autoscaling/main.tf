@@ -104,6 +104,13 @@ resource "aws_iam_role_policy" "cloudwatch_agent" {
             "cloudwatch:namespace" = "Docker/Containers"
           }
         }
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "autoscaling:DescribeAutoScalingInstances"
+        ]
+        Resource = "*"
       }
     ]
   })
