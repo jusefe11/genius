@@ -66,31 +66,39 @@ managed_by  = "terraform"
 # Para almacenar secretos de forma segura usando AWS Secrets Manager
 # Ver: infra/GUIA_SECRETS_MANAGER.md para más detalles
 
-# Secreto de Base de Datos (deshabilitado por defecto)
-# create_db_secret = false
-# db_username      = "myapp_user"
-# db_password      = "SuperSecurePassword123!"  # ⚠️ Valor sensible
-# db_host          = "mydb.example.com"
-# db_port          = 3306
-# db_name          = "myapp_db"
-# db_engine        = "mysql"
+# Secreto de Base de Datos (HABILITADO)
+# Nota: db_port y db_engine ya están definidos arriba en Security Groups
+create_db_secret = true
+db_username      = "genius_user"
+db_password      = "GeniusSecurePass2024!"  # ⚠️ Valor sensible
+db_host          = "genius-db.example.com"
+# db_port y db_engine se reutilizan de la sección de Security Groups
+db_name          = "genius_db"
 
-# Secreto de API Keys (deshabilitado por defecto)
-# create_api_keys_secret = false
-# api_keys = {
-#   stripe_api_key   = "sk_live_xxxxxxxxxxxxx"  # ⚠️ Valores sensibles
-#   sendgrid_api_key = "SG.xxxxxxxxxxxxx"
-# }
+# Secreto de API Keys (HABILITADO)
+create_api_keys_secret = true
+api_keys = {
+  stripe_api_key   = "sk_test_51GeniusExampleKey123456789"  # ⚠️ Valores sensibles
+  sendgrid_api_key = "SG.GeniusExampleSendGridKey123456789"
+  openai_api_key   = "sk-GeniusExampleOpenAIKey123456789"
+}
 
-# Secretos Genéricos (opcional)
-# app_secrets = {
-#   jwt_secret = {
-#     description   = "JWT signing secret"
-#     secret_string = jsonencode({
-#       secret = "my-jwt-secret-key-12345"
-#     })
-#   }
-# }
+# Secretos Genéricos (HABILITADO)
+app_secrets = {
+  jwt_secret = {
+    description   = "JWT signing secret para autenticacion"
+    secret_string = jsonencode({
+      secret = "genius-jwt-secret-key-2024-super-secure"
+      algorithm = "HS256"
+    })
+  }
+  encryption_key = {
+    description   = "Clave de encriptacion para datos sensibles"
+    secret_string = jsonencode({
+      key = "genius-encryption-key-32-chars-long-12345"
+    })
+  }
+}
 
 # Clave KMS personalizada para cifrar secretos (opcional)
 # Si no se especifica, usa la clave por defecto de Secrets Manager

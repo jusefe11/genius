@@ -37,8 +37,9 @@ Write-Host "VERIFICACION:" -ForegroundColor White
 Write-Host "  3. Verificar estado de todas las alarmas" -ForegroundColor Green
 Write-Host "  5. Diagnosticar metricas Docker (verificar por que no aparecen datos)" -ForegroundColor Yellow
 Write-Host "  6. FORZAR envio de metricas Docker AHORA (solucion rapida)" -ForegroundColor Magenta
+Write-Host "  7. Verificar metricas de CPU en CloudWatch (diagnostico)" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "Selecciona una opcion (1-6):" -ForegroundColor Cyan
+Write-Host "Selecciona una opcion (1-7):" -ForegroundColor Cyan
 $option = Read-Host
 
 if (-not $option -or $option -eq "") {
@@ -181,8 +182,44 @@ echo "$(date): Running containers: $RUNNING_CONTAINERS, Total containers: $TOTAL
     Start-Sleep -Seconds 3
 }
 
-# URL del dashboard
-$dashboardUrl = "https://console.aws.amazon.com/cloudwatch/home?region=us-east-1#dashboards:name=genius-dev-application-status"
+# Obtener región y dashboard URL dinámicamente
+Write-Host "Obteniendo información del dashboard..." -ForegroundColor Yellow
+try {
+    # Obtener región actual
+    $regionOutput = & aws configure get region 2>&1
+    if ($LASTEXITCODE -ne 0 -or -not $regionOutput) {
+        $regionOutput = & aws ec2 describe-availability-zones --query 'AvailabilityZones[0].RegionName' --output text 2>&1
+    }
+    if ($LASTEXITCODE -eq 0 -and $regionOutput) {
+        $region = $regionOutput.Trim()
+        Write-Host "OK Región detectada: $region" -ForegroundColor Green
+    } else {
+        $region = "us-east-1"  # Fallback
+        Write-Host "ADVERTENCIA: No se pudo detectar la región, usando: $region" -ForegroundColor Yellow
+    }
+    
+    # Obtener nombre del dashboard desde Terraform outputs
+    $dashboardName = "genius-dev-application-status"
+    try {
+        $tfOutput = & terraform output -json 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $outputs = $tfOutput | ConvertFrom-Json
+            if ($outputs.cloudwatch_dashboard_name -and $outputs.cloudwatch_dashboard_name.value) {
+                $dashboardName = $outputs.cloudwatch_dashboard_name.value
+                Write-Host "OK Dashboard encontrado: $dashboardName" -ForegroundColor Green
+            }
+        }
+    } catch {
+        Write-Host "ADVERTENCIA: No se pudo obtener el nombre del dashboard desde Terraform, usando: $dashboardName" -ForegroundColor Yellow
+    }
+    
+    $dashboardUrl = "https://console.aws.amazon.com/cloudwatch/home?region=$region#dashboards:name=$dashboardName"
+} catch {
+    Write-Host "ADVERTENCIA: Error al obtener información del dashboard, usando valores por defecto" -ForegroundColor Yellow
+    $region = "us-east-1"
+    $dashboardName = "genius-dev-application-status"
+    $dashboardUrl = "https://console.aws.amazon.com/cloudwatch/home?region=$region#dashboards:name=$dashboardName"
+}
 
 # Ejecutar prueba segun opcion seleccionada
 switch ($option) {
@@ -237,60 +274,98 @@ switch ($option) {
             Write-Host "Iniciando stress-ng con TODOS los CPUs disponibles..." -ForegroundColor Yellow
             Write-Host "Esto generara carga al 100% en todos los cores" -ForegroundColor Cyan
             
-            # Método más simple y directo - construir el comando con la duración
-            $stressTimeout = "${durationSeconds}s"
-            $cpuCommands = @(
-                'sudo pkill -9 stress-ng yes 2>/dev/null || true',
-                'CPU_COUNT=$(nproc)',
-                'echo "CPUs disponibles: $CPU_COUNT"',
-                "sudo nohup stress-ng --cpu `$CPU_COUNT --timeout $stressTimeout > /tmp/stress-ng.log 2>&1 &",
-                'sleep 5',
-                'if pgrep -f stress-ng > /dev/null; then echo "OK: stress-ng corriendo"; ps aux | grep stress-ng | grep -v grep | head -2; else echo "ERROR: stress-ng no inicio"; fi'
-            )
-            $cpuCommandsJson = ($cpuCommands | ConvertTo-Json -Compress)
-            $cpuOutput = & aws ssm send-command `
-                --instance-ids $instanceId `
-                --document-name "AWS-RunShellScript" `
-                --parameters "commands=$cpuCommandsJson" `
-                --output json 2>&1
+            # Usar el script saturar-cpu.sh que ya tienes
+            Write-Host "Subiendo y ejecutando script saturar-cpu.sh..." -ForegroundColor Yellow
+            $scriptPath = Join-Path $PSScriptRoot "saturar-cpu.sh"
+            if (Test-Path $scriptPath) {
+                # Leer el script y subirlo al servidor usando heredoc
+                $scriptContent = Get-Content $scriptPath -Raw
+                
+                # Subir script y ejecutarlo usando el mismo método que funciona en Update-DockerMonitorScript
+                $uploadCommands = @(
+                    "cat > /tmp/saturar-cpu.sh <<'SCRIPTEOF'",
+                    $scriptContent,
+                    "SCRIPTEOF",
+                    "chmod +x /tmp/saturar-cpu.sh",
+                    "/tmp/saturar-cpu.sh $durationMinutes stress-ng"
+                )
+                $uploadCommandsJson = ($uploadCommands | ConvertTo-Json -Compress)
+                
+                $cpuOutput = & aws ssm send-command `
+                    --instance-ids $instanceId `
+                    --document-name "AWS-RunShellScript" `
+                    --parameters "commands=$uploadCommandsJson" `
+                    --output json 2>&1
+            } else {
+                Write-Host "Script saturar-cpu.sh no encontrado, usando metodo directo..." -ForegroundColor Yellow
+                # Fallback al método directo
+                $stressTimeout = "${durationSeconds}s"
+                $cpuOutput = & aws ssm send-command `
+                    --instance-ids $instanceId `
+                    --document-name "AWS-RunShellScript" `
+                    --parameters "commands=['nohup sudo stress-ng --cpu 4 --timeout ${stressTimeout}s > /tmp/stress-ng.log 2>&1 &']" `
+                    --output json 2>&1
+            }
             
             if ($LASTEXITCODE -eq 0) {
                 try {
                     $cpuResult = ($cpuOutput -join "`n") | ConvertFrom-Json
                     $cpuCommandId = $cpuResult.Command.CommandId
+                    Write-Host "OK Comando enviado (Command ID: $cpuCommandId)" -ForegroundColor Green
                 } catch {
                     Write-Host "ERROR: No se pudo parsear la respuesta de AWS SSM" -ForegroundColor Red
                     $errorOutput = $cpuOutput -join [Environment]::NewLine
                     Write-Host "Respuesta: $errorOutput" -ForegroundColor Gray
                     break
                 }
-                Start-Sleep -Seconds 5
                 
-                # Verificar que stress-ng esté corriendo
-                $verifyOutput = & aws ssm get-command-invocation `
-                    --command-id $cpuCommandId `
-                    --instance-id $instanceId `
+                Write-Host "Esperando 15 segundos para que stress-ng se inicie..." -ForegroundColor Yellow
+                Start-Sleep -Seconds 15
+                
+                # Verificar que stress-ng esté corriendo con un comando separado
+                Write-Host "Verificando que stress-ng este corriendo..." -ForegroundColor Cyan
+                $verifyCmd = 'if pgrep -f stress-ng > /dev/null; then echo "OK: stress-ng corriendo"; ps aux | grep stress-ng | grep -v grep | head -3; else echo "ERROR: stress-ng no esta corriendo"; fi'
+                $verifyOutput = & aws ssm send-command `
+                    --instance-ids $instanceId `
+                    --document-name "AWS-RunShellScript" `
+                    --parameters "commands=['$verifyCmd']" `
                     --output json 2>&1
                 
                 if ($LASTEXITCODE -eq 0) {
                     $verifyResult = ($verifyOutput -join "`n") | ConvertFrom-Json
-                    $output = $verifyResult.StandardOutputContent
+                    $verifyCommandId = $verifyResult.Command.CommandId
+                    Start-Sleep -Seconds 3
                     
-                    if ($output -match "ERROR") {
-                        Write-Host "ERROR: stress-ng no se inicio correctamente" -ForegroundColor Red
-                        Write-Host "Salida: $output" -ForegroundColor Gray
-                    } else {
-                        Write-Host "OK stress-ng esta corriendo" -ForegroundColor Green
-                        if ($output -match "stress-ng") {
-                            $lines = $output -split "`n"
-                            $processLine = $lines | Select-String 'stress-ng' | Select-Object -First 1
-                            if ($processLine) {
-                                Write-Host "Proceso verificado: $processLine" -ForegroundColor Gray
+                    $checkOutput = & aws ssm get-command-invocation `
+                        --command-id $verifyCommandId `
+                        --instance-id $instanceId `
+                        --output json 2>&1
+                    
+                    if ($LASTEXITCODE -eq 0) {
+                        $checkResult = ($checkOutput -join "`n") | ConvertFrom-Json
+                        $checkOutputText = $checkResult.StandardOutputContent
+                        
+                        Write-Host "Resultado de verificacion:" -ForegroundColor Gray
+                        Write-Host $checkOutputText -ForegroundColor White
+                        
+                        if ($checkOutputText -match "ERROR" -or $checkOutputText -notmatch "OK: stress-ng corriendo") {
+                            Write-Host "`nADVERTENCIA: stress-ng puede no estar corriendo" -ForegroundColor Yellow
+                            Write-Host "Iniciando metodo alternativo con procesos 'yes'..." -ForegroundColor Yellow
+                            
+                            # Método alternativo: usar yes
+                            $altOutput = & aws ssm send-command `
+                                --instance-ids $instanceId `
+                                --document-name "AWS-RunShellScript" `
+                                --parameters "commands=['CPU_COUNT=`$(nproc); for i in `$(seq 1 `$CPU_COUNT); do nohup yes > /dev/null 2>&1 & done; sleep 2; echo \"Procesos yes iniciados: `$(pgrep yes | wc -l)\"']" `
+                                --output json 2>&1
+                            
+                            if ($LASTEXITCODE -eq 0) {
+                                Write-Host "OK Metodo alternativo (yes) iniciado" -ForegroundColor Green
                             }
+                        } else {
+                            Write-Host "`nOK stress-ng esta corriendo correctamente" -ForegroundColor Green
                         }
                     }
-                } else {
-                    Write-Host "ERROR: No se pudo obtener el resultado del comando" -ForegroundColor Red
                 }
             } else {
                 Write-Host "ERROR: Fallo al enviar comando a AWS SSM" -ForegroundColor Red
@@ -323,20 +398,20 @@ switch ($option) {
             } else {
                 Write-Host "ERROR Error al iniciar carga de CPU" -ForegroundColor Red
             }
-        } else {
+} else {
             Write-Host "ERROR Error al instalar stress-ng" -ForegroundColor Red
         }
-    }
-    
+}
+
     "2" {
         # Activar alarma: Docker containers caidos (Widget 2)
-        Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host "`n========================================" -ForegroundColor Cyan
         Write-Host "WIDGET 2: Docker Containers" -ForegroundColor Red
         Write-Host "ACTIVAR ALARMA: Contenedores Docker Caidos" -ForegroundColor Red
         Write-Host "Alarma: genius-dev-docker-containers-down" -ForegroundColor Yellow
         Write-Host "Umbral: RunningContainers < 2" -ForegroundColor Yellow
-        Write-Host "========================================`n" -ForegroundColor Cyan
-        
+Write-Host "========================================`n" -ForegroundColor Cyan
+
         $instances = Get-EC2Instances
         if (-not $instances) { break }
         
@@ -412,7 +487,7 @@ switch ($option) {
                         $stopResult = ($stopOutput -join "`n") | ConvertFrom-Json
                         $stopCommandId = $stopResult.Command.CommandId
                         Write-Host "OK Comando enviado (Command ID: $stopCommandId)" -ForegroundColor Green
-                    } catch {
+    } catch {
                         Write-Host "ADVERTENCIA: No se pudo parsear la respuesta JSON" -ForegroundColor Yellow
                         Write-Host "Respuesta: $($stopOutput -join [Environment]::NewLine)" -ForegroundColor Gray
                     }
@@ -867,15 +942,104 @@ switch ($option) {
             }
         }
         
-        Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host "`n========================================" -ForegroundColor Cyan
         Write-Host "PROCESO COMPLETADO" -ForegroundColor Green
-        Write-Host "========================================" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
         Write-Host "`nINSTRUCCIONES:" -ForegroundColor Yellow
         Write-Host "  1. Espera 1-2 minutos adicionales" -ForegroundColor White
         Write-Host "  2. Refresca el dashboard de CloudWatch" -ForegroundColor White
         Write-Host "  3. Si aun no aparecen datos, ejecuta la opcion 5 (Diagnostico)" -ForegroundColor White
         Write-Host "`nDashboard: $dashboardUrl" -ForegroundColor Cyan
         
+        Write-Host "`n¿Quieres abrir el dashboard ahora? (S/N):" -ForegroundColor Cyan
+        $openDashboard = Read-Host
+        if ($openDashboard -eq "S" -or $openDashboard -eq "s") {
+            Start-Process $dashboardUrl
+        }
+    }
+    
+    7 {
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "DIAGNOSTICO: Metricas de CPU en CloudWatch" -ForegroundColor Cyan
+        Write-Host "========================================`n" -ForegroundColor Cyan
+        
+        $instances = Get-EC2Instances
+        if (-not $instances -or $instances.Count -eq 0) {
+            Write-Host "ERROR: No se encontraron instancias" -ForegroundColor Red
+            break
+        }
+        
+        $instanceId = $instances[0][0]
+        Write-Host "Usando instancia: $instanceId" -ForegroundColor Gray
+        
+        # Obtener ASG name
+        Write-Host "`nPASO 1: Obteniendo nombre del Auto Scaling Group..." -ForegroundColor Yellow
+        $asgOutput = & aws autoscaling describe-auto-scaling-instances --instance-ids $instanceId --query 'AutoScalingInstances[0].AutoScalingGroupName' --output text 2>&1
+        if ($LASTEXITCODE -eq 0 -and $asgOutput) {
+            $asgName = $asgOutput.Trim()
+            Write-Host "OK ASG Name: $asgName" -ForegroundColor Green
+        } else {
+            Write-Host "ERROR: No se pudo obtener el ASG name" -ForegroundColor Red
+            Write-Host "Salida: $asgOutput" -ForegroundColor Gray
+            break
+        }
+        
+        # Verificar métricas de CPU
+        Write-Host "`nPASO 2: Consultando metricas de CPU en CloudWatch..." -ForegroundColor Yellow
+        Write-Host "  Namespace: AWS/EC2" -ForegroundColor Gray
+        Write-Host "  Metric: CPUUtilization" -ForegroundColor Gray
+        Write-Host "  Dimension: AutoScalingGroupName=$asgName" -ForegroundColor Gray
+        Write-Host "  Periodo: Ultimos 15 minutos" -ForegroundColor Gray
+        
+        $startTime = (Get-Date).AddMinutes(-15).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss")
+        $endTime = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss")
+        
+        $metricsOutput = & aws cloudwatch get-metric-statistics `
+            --namespace "AWS/EC2" `
+            --metric-name "CPUUtilization" `
+            --dimensions Name=AutoScalingGroupName,Value=$asgName `
+            --start-time $startTime `
+            --end-time $endTime `
+            --period 60 `
+            --statistics Average,Maximum `
+            --output json 2>&1
+        
+        if ($LASTEXITCODE -eq 0) {
+            $metricsData = ($metricsOutput -join "`n") | ConvertFrom-Json
+            if ($metricsData.Datapoints -and $metricsData.Datapoints.Count -gt 0) {
+                Write-Host "`n[OK] EXITO: Se encontraron $($metricsData.Datapoints.Count) puntos de datos" -ForegroundColor Green
+                Write-Host "`nUltimos valores de CPU:" -ForegroundColor Cyan
+                $metricsData.Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 10 | ForEach-Object {
+                    $timestamp = [DateTime]::Parse($_.Timestamp)
+                    $avg = [math]::Round($_.Average, 2)
+                    $max = [math]::Round($_.Maximum, 2)
+                    $color = if ($avg -gt 80) { "Red" } elseif ($avg -gt 50) { "Yellow" } else { "Green" }
+                    Write-Host "  $($timestamp.ToString('HH:mm:ss')) - Promedio: $avg% | Maximo: $max%" -ForegroundColor $color
+                }
+                Write-Host "`n[OK] Las metricas de CPU ESTAN DISPONIBLES en CloudWatch" -ForegroundColor Green
+                Write-Host "  El dashboard deberia mostrar estos datos" -ForegroundColor White
+                Write-Host "  Si no los ves, verifica:" -ForegroundColor Yellow
+                Write-Host "    1. Que el dashboard este en la region correcta ($region)" -ForegroundColor Gray
+                Write-Host "    2. Que el nombre del dashboard sea: $dashboardName" -ForegroundColor Gray
+                Write-Host "    3. Que el periodo del widget sea 300 segundos (5 minutos)" -ForegroundColor Gray
+                Write-Host "    4. Refresca el dashboard" -ForegroundColor Gray
+            } else {
+                Write-Host "`n[ADVERTENCIA] NO se encontraron metricas de CPU en los ultimos 15 minutos" -ForegroundColor Yellow
+                Write-Host "  Posibles causas:" -ForegroundColor Yellow
+                Write-Host "    1. Las instancias no estan generando carga de CPU" -ForegroundColor Gray
+                Write-Host "    2. Las metricas aun no han llegado a CloudWatch (puede tardar 1-2 minutos)" -ForegroundColor Gray
+                Write-Host "    3. El ASG name no coincide: $asgName" -ForegroundColor Gray
+                Write-Host "`n  SOLUCION: Ejecuta la opcion 1 para saturar la CPU y espera 2-3 minutos" -ForegroundColor Cyan
+            }
+        } else {
+            Write-Host "`nERROR: No se pudo consultar CloudWatch" -ForegroundColor Red
+            Write-Host "Salida: $($metricsOutput -join [Environment]::NewLine)" -ForegroundColor Gray
+        }
+        
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "DIAGNOSTICO COMPLETADO" -ForegroundColor Green
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host "`nDashboard URL: $dashboardUrl" -ForegroundColor Cyan
         Write-Host "`n¿Quieres abrir el dashboard ahora? (S/N):" -ForegroundColor Cyan
         $openDashboard = Read-Host
         if ($openDashboard -eq "S" -or $openDashboard -eq "s") {
