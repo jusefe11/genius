@@ -241,18 +241,16 @@ fi
 TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%S)
 ERROR_LOG="/var/log/docker-monitor-errors.log"
 
-# Enviar RunningContainers
+# Enviar RunningContainers (las dimensiones deben ir dentro de metric-data)
 aws cloudwatch put-metric-data \
   --namespace "Docker/Containers" \
-  --metric-data MetricName=RunningContainers,Value=$RUNNING_CONTAINERS,Unit=Count,Timestamp=$TIMESTAMP \
-  --dimensions InstanceId=$INSTANCE_ID,AutoScalingGroupName=$ASG_NAME \
+  --metric-data MetricName=RunningContainers,Value=$RUNNING_CONTAINERS,Unit=Count,Timestamp=$TIMESTAMP,Dimensions="[{Name=InstanceId,Value=$INSTANCE_ID},{Name=AutoScalingGroupName,Value=$ASG_NAME}]" \
   --region "$AWS_REGION" >> $ERROR_LOG 2>&1
 
 # Enviar TotalContainers
 aws cloudwatch put-metric-data \
   --namespace "Docker/Containers" \
-  --metric-data MetricName=TotalContainers,Value=$TOTAL_CONTAINERS,Unit=Count,Timestamp=$TIMESTAMP \
-  --dimensions InstanceId=$INSTANCE_ID,AutoScalingGroupName=$ASG_NAME \
+  --metric-data MetricName=TotalContainers,Value=$TOTAL_CONTAINERS,Unit=Count,Timestamp=$TIMESTAMP,Dimensions="[{Name=InstanceId,Value=$INSTANCE_ID},{Name=AutoScalingGroupName,Value=$ASG_NAME}]" \
   --region "$AWS_REGION" >> $ERROR_LOG 2>&1
 
 # Log para debugging
