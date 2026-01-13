@@ -84,80 +84,21 @@ resource "aws_cloudwatch_metric_alarm" "docker_containers_down" {
 # DASHBOARD
 # ==========================================
 
+# Dashboard simplificado: solo CPU y Docker (solo para dev)
 resource "aws_cloudwatch_dashboard" "main" {
+  count = var.environment == "dev" ? 1 : 0
+  
   dashboard_name = "${var.project_name}-${var.environment}-application-status"
 
   dashboard_body = jsonencode({
     widgets = [
-      # Widget 1: Health Checks - Hosts Saludables vs No Saludables
+      # Widget 1: CPU Usage
       {
         type   = "metric"
         x      = 0
         y      = 0
-        width  = 24
-        height = 6
-
-        properties = {
-          metrics = [
-            [
-              "AWS/ApplicationELB",
-              "HealthyHostCount",
-              "TargetGroup",
-              local.target_group_identifier,
-              "LoadBalancer",
-              local.alb_name,
-              {
-                stat   = "Average"
-                label  = "Hosts Saludables"
-                color  = "#2ca02c"
-              }
-            ],
-            [
-              "AWS/ApplicationELB",
-              "UnHealthyHostCount",
-              "TargetGroup",
-              local.target_group_identifier,
-              "LoadBalancer",
-              local.alb_name,
-              {
-                stat   = "Average"
-                label  = "Hosts No Saludables"
-                color  = "#d62728"
-              }
-            ]
-          ]
-          period = 60
-          stat   = "Average"
-          region = data.aws_region.current.name
-          title  = "Health Checks - Hosts Saludables vs No Saludables"
-          view   = "timeSeries"
-          yAxis = {
-            left = {
-              min = 0
-              label = "Cantidad de Hosts"
-            }
-          }
-          annotations = {
-            horizontal = [
-              {
-                value     = 0
-                label     = "Sin hosts no saludables"
-                color     = "#2ca02c"
-                fill      = "below"
-                visible   = true
-                yAxis     = "left"
-              }
-            ]
-          }
-        }
-      },
-      # Widget 2: CPU Usage (Gráfico línea) - AutoScalingGroupName como dimensión
-      {
-        type   = "metric"
-        x      = 0
-        y      = 6
         width  = 12
-        height = 6
+        height = 8
 
         properties = {
           metrics = [
@@ -165,7 +106,12 @@ resource "aws_cloudwatch_dashboard" "main" {
               "AWS/EC2",
               "CPUUtilization",
               "AutoScalingGroupName",
-              var.asg_name
+              var.asg_name,
+              {
+                stat   = "Average"
+                label  = "CPU Usage"
+                color  = "#1f77b4"
+              }
             ]
           ]
           period = 300
@@ -180,86 +126,60 @@ resource "aws_cloudwatch_dashboard" "main" {
               label = "Percent"
             }
           }
-        }
-      },
-      # Widget 3: Errores HTTP 5xx
-      {
-        type   = "metric"
-        x      = 12
-        y      = 6
-        width  = 12
-        height = 6
-
-        properties = {
-          metrics = [
-            [
-              "AWS/ApplicationELB",
-              "HTTPCode_Target_5XX_Count",
-              "LoadBalancer",
-              local.alb_name,
+          annotations = {
+            horizontal = [
               {
-                stat   = "Sum"
-                label  = "Errores 5xx"
-                color  = "#ff7f0e"
+                value     = 80
+                label     = "Umbral de Alarma (80%)"
+                color     = "#ff7f0e"
+                fill      = "above"
+                visible   = true
+                yAxis     = "left"
               }
             ]
-          ]
-          period = 300
-          stat   = "Sum"
-          region = data.aws_region.current.name
-          title  = "Errores HTTP 5xx"
-          view   = "timeSeries"
-          yAxis = {
-            left = {
-              min = 0
-              label = "Cantidad"
-            }
           }
         }
       },
-      # Widget 4: Estado de Alarmas
+      # Widget 2: Docker Containers
       {
         type   = "metric"
-        x      = 0
-        y      = 12
-        width  = 24
-        height = 6
+        x      = 12
+        y      = 0
+        width  = 12
+        height = 8
 
         properties = {
           metrics = [
             [
-              "AWS/ApplicationELB",
-              "UnHealthyHostCount",
-              "TargetGroup",
-              local.target_group_identifier,
-              "LoadBalancer",
-              local.alb_name,
+              "Docker/Containers",
+              "RunningContainers",
+              "AutoScalingGroupName",
+              var.asg_name,
               {
-                stat   = "Average"
-                label  = "Hosts No Saludables (Alarma: > 0)"
-                color  = "#d62728"
-                yAxis  = "left"
+                stat   = "Sum"
+                label  = "Contenedores Docker Corriendo"
+                color  = "#2ca02c"
               }
             ]
           ]
           period = 60
-          stat   = "Average"
+          stat   = "Sum"
           region = data.aws_region.current.name
-          title  = "Estado de Health Checks - Alarma de Hosts No Saludables"
+          title  = "Docker Containers - Contenedores Corriendo"
           view   = "timeSeries"
           yAxis = {
             left = {
               min = 0
-              label = "Cantidad"
+              label = "Cantidad de Contenedores"
             }
           }
           annotations = {
             horizontal = [
               {
-                value     = 0
-                label     = "Umbral de Alarma"
-                color     = "#ff0000"
-                fill      = "above"
+                value     = var.expected_docker_containers
+                label     = "Contenedores Esperados"
+                color     = "#ff7f0e"
+                fill      = "below"
                 visible   = true
                 yAxis     = "left"
               }
