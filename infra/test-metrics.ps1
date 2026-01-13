@@ -276,7 +276,7 @@ switch ($option) {
             $stopOutput = & aws ssm send-command `
                 --instance-ids $instanceId `
                 --document-name "AWS-RunShellScript" `
-                --parameters "commands=['CONTAINER_ID=$(docker ps -q 2>/dev/null | head -n 1); if [ -z \"$CONTAINER_ID\" ]; then CONTAINER_ID=$(sudo docker ps -q 2>/dev/null | head -n 1); fi; if [ -n \"$CONTAINER_ID\" ]; then docker stop $CONTAINER_ID 2>/dev/null || sudo docker stop $CONTAINER_ID; echo \"Contenedor $CONTAINER_ID detenido\"; else echo \"No hay contenedores corriendo\"; fi']" `
+                --parameters "commands=['CONTAINER_ID=`$(docker ps -q 2>/dev/null | head -n 1); if [ -z \"`$CONTAINER_ID\" ]; then CONTAINER_ID=`$(sudo docker ps -q 2>/dev/null | head -n 1); fi; if [ -n \"`$CONTAINER_ID\" ]; then docker stop `$CONTAINER_ID 2>/dev/null || sudo docker stop `$CONTAINER_ID; echo \"Contenedor `$CONTAINER_ID detenido\"; else echo \"No hay contenedores corriendo\"; fi']" `
                 --output json 2>&1
             if ($LASTEXITCODE -eq 0) {
                 $stopResult = ($stopOutput -join "`n") | ConvertFrom-Json
@@ -319,14 +319,23 @@ switch ($option) {
             
             if ($confirm -eq "S" -or $confirm -eq "s") {
                 Write-Host "`nDeteniendo todos los contenedores Docker..." -ForegroundColor Yellow
+                
+                # Simplificar: usar un solo comando como en la opción A que funciona
+                # Pero adaptado para detener todos los contenedores
                 $stopOutput = & aws ssm send-command `
                     --instance-ids $instanceId `
                     --document-name "AWS-RunShellScript" `
-                    --parameters "commands=['CONTAINERS=$(docker ps -q 2>/dev/null); if [ -z \"$CONTAINERS\" ]; then CONTAINERS=$(sudo docker ps -q 2>/dev/null); fi; if [ -n \"$CONTAINERS\" ]; then docker stop $CONTAINERS 2>/dev/null || sudo docker stop $CONTAINERS; fi']" `
+                    --parameters "commands=['docker ps -q | xargs -r docker stop 2>/dev/null || sudo docker ps -q | xargs -r sudo docker stop 2>/dev/null; echo Contenedores detenidos']" `
                     --output json 2>&1
                 if ($LASTEXITCODE -eq 0) {
-                    $stopResult = ($stopOutput -join "`n") | ConvertFrom-Json
-                    Write-Host "OK Comando enviado" -ForegroundColor Green
+                    try {
+                        $stopResult = ($stopOutput -join "`n") | ConvertFrom-Json
+                        $stopCommandId = $stopResult.Command.CommandId
+                        Write-Host "OK Comando enviado (Command ID: $stopCommandId)" -ForegroundColor Green
+                    } catch {
+                        Write-Host "ADVERTENCIA: No se pudo parsear la respuesta JSON" -ForegroundColor Yellow
+                        Write-Host "Respuesta: $($stopOutput -join [Environment]::NewLine)" -ForegroundColor Gray
+                    }
                     
                     Write-Host "`nForzando envio inmediato de metricas..." -ForegroundColor Yellow
                     $forceMetricOutput = & aws ssm send-command `
@@ -355,6 +364,8 @@ switch ($option) {
                     }
                 } else {
                     Write-Host "ERROR Error al detener contenedores" -ForegroundColor Red
+                    Write-Host "Detalles del error:" -ForegroundColor Yellow
+                    Write-Host ($stopOutput -join "`n") -ForegroundColor Gray
                 }
             }
         }
@@ -363,7 +374,7 @@ switch ($option) {
             $statusOutput = & aws ssm send-command `
                 --instance-ids $instanceId `
                 --document-name "AWS-RunShellScript" `
-                --parameters "commands=['DOCKER_CMD=\"docker\"; if ! docker ps >/dev/null 2>&1; then DOCKER_CMD=\"sudo docker\"; fi; echo \"Contenedores corriendo:\"; $DOCKER_CMD ps --format \"table {{.ID}}\\t{{.Names}}\\t{{.Status}}\"; echo \"\\nTotal:\"; $DOCKER_CMD ps -q | wc -l']" `
+                --parameters "commands=['DOCKER_CMD=\"docker\"; if ! docker ps >/dev/null 2>&1; then DOCKER_CMD=\"sudo docker\"; fi; echo \"Contenedores corriendo:\"; `$DOCKER_CMD ps --format \"table {{.ID}}\\t{{.Names}}\\t{{.Status}}\"; echo \"\\nTotal:\"; `$DOCKER_CMD ps -q | wc -l']" `
                 --output json 2>&1
             if ($LASTEXITCODE -eq 0) {
                 $statusResult = ($statusOutput -join "`n") | ConvertFrom-Json
@@ -468,7 +479,7 @@ switch ($option) {
         $stopOutput = & aws ssm send-command `
             --instance-ids $instanceId `
             --document-name "AWS-RunShellScript" `
-            --parameters "commands=['CONTAINER_ID=$(docker ps -q 2>/dev/null | head -n 1); if [ -z \"$CONTAINER_ID\" ]; then CONTAINER_ID=$(sudo docker ps -q 2>/dev/null | head -n 1); fi; if [ -n \"$CONTAINER_ID\" ]; then docker stop $CONTAINER_ID 2>/dev/null || sudo docker stop $CONTAINER_ID; echo \"Contenedor $CONTAINER_ID detenido\"; else echo \"No hay contenedores corriendo\"; fi']" `
+            --parameters "commands=['CONTAINER_ID=`$(docker ps -q 2>/dev/null | head -n 1); if [ -z \"`$CONTAINER_ID\" ]; then CONTAINER_ID=`$(sudo docker ps -q 2>/dev/null | head -n 1); fi; if [ -n \"`$CONTAINER_ID\" ]; then docker stop `$CONTAINER_ID 2>/dev/null || sudo docker stop `$CONTAINER_ID; echo \"Contenedor `$CONTAINER_ID detenido\"; else echo \"No hay contenedores corriendo\"; fi']" `
             --output json 2>&1
         
         if ($LASTEXITCODE -eq 0) {

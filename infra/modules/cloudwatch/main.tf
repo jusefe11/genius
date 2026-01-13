@@ -24,60 +24,7 @@ locals {
 # ALARMAS
 # ==========================================
 
-# Alarma 1: Instancias no saludables
-resource "aws_cloudwatch_metric_alarm" "unhealthy_hosts" {
-  alarm_name          = "${var.project_name}-${var.environment}-unhealthy-hosts"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "UnHealthyHostCount"
-  namespace           = "AWS/ApplicationELB"
-  period              = 60
-  statistic           = "Average"
-  threshold           = 0
-  alarm_description   = "Alerta cuando hay instancias no saludables en el Target Group"
-  treat_missing_data  = "notBreaching"
-
-  dimensions = {
-    TargetGroup  = local.target_group_identifier
-    LoadBalancer = local.alb_name
-  }
-
-  tags = merge(
-    local.common_tags,
-    {
-      Name = "${var.project_name}-${var.environment}-unhealthy-hosts-alarm"
-      Type = "cloudwatch-alarm"
-    }
-  )
-}
-
-# Alarma 2: Errores 5xx
-resource "aws_cloudwatch_metric_alarm" "http_5xx_errors" {
-  alarm_name          = "${var.project_name}-${var.environment}-http-5xx-errors"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "HTTPCode_Target_5XX_Count"
-  namespace           = "AWS/ApplicationELB"
-  period              = 300
-  statistic           = "Sum"
-  threshold           = var.error_5xx_threshold
-  alarm_description   = "Alerta cuando hay errores 5xx del servidor"
-  treat_missing_data  = "notBreaching"
-
-  dimensions = {
-    LoadBalancer = local.alb_name
-  }
-
-  tags = merge(
-    local.common_tags,
-    {
-      Name = "${var.project_name}-${var.environment}-http-5xx-errors-alarm"
-      Type = "cloudwatch-alarm"
-    }
-  )
-}
-
-# Alarma 3: CPU Alta
+# Alarma 1: CPU Alta
 resource "aws_cloudwatch_metric_alarm" "high_cpu" {
   alarm_name          = "${var.project_name}-${var.environment}-high-cpu"
   comparison_operator = "GreaterThanThreshold"
@@ -103,62 +50,7 @@ resource "aws_cloudwatch_metric_alarm" "high_cpu" {
   )
 }
 
-# Alarma 4: Sin hosts saludables
-resource "aws_cloudwatch_metric_alarm" "no_healthy_hosts" {
-  alarm_name          = "${var.project_name}-${var.environment}-no-healthy-hosts"
-  comparison_operator = "LessThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "HealthyHostCount"
-  namespace           = "AWS/ApplicationELB"
-  period              = 60
-  statistic           = "Average"
-  threshold           = 1
-  alarm_description   = "Alerta cuando no hay hosts saludables en el Target Group"
-  treat_missing_data  = "notBreaching"
-
-  dimensions = {
-    TargetGroup  = local.target_group_identifier
-    LoadBalancer = local.alb_name
-  }
-
-  tags = merge(
-    local.common_tags,
-    {
-      Name = "${var.project_name}-${var.environment}-no-healthy-hosts-alarm"
-      Type = "cloudwatch-alarm"
-    }
-  )
-}
-
-# Alarma 5: RAM Alta (solo si CloudWatch Agent esta configurado)
-resource "aws_cloudwatch_metric_alarm" "high_memory" {
-  count = var.environment == "dev" ? 1 : 0
-  
-  alarm_name          = "${var.project_name}-${var.environment}-high-memory"
-  comparison_operator = "GreaterThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "mem_used_percent"
-  namespace           = "CWAgent"
-  period              = 60
-  statistic           = "Average"
-  threshold           = 80
-  alarm_description   = "Alerta cuando el uso de RAM esta por encima del 80% durante 1 minuto"
-  treat_missing_data  = "missing"
-
-  dimensions = {
-    AutoScalingGroupName = var.asg_name
-  }
-
-  tags = merge(
-    local.common_tags,
-    {
-      Name = "${var.project_name}-${var.environment}-high-memory-alarm"
-      Type = "cloudwatch-alarm"
-    }
-  )
-}
-
-# Alarma 6: Contenedores Docker caidos (solo para dev)
+# Alarma 2: Contenedores Docker caidos (solo para dev)
 # Esta alarma se activa cuando el numero total de contenedores corriendo en el ASG es menor al esperado
 # El threshold se calcula como: expected_containers_per_instance * min_instances
 resource "aws_cloudwatch_metric_alarm" "docker_containers_down" {
