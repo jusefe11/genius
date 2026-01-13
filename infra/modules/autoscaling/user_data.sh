@@ -196,34 +196,67 @@ cat > /usr/local/bin/monitor-docker-containers.sh <<'DOCKERMONEOF'
 AWS_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || echo "us-east-1")
 INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
 
+# Intentar usar docker sin sudo primero, luego con sudo si falla
+DOCKER_CMD="docker"
+if ! $DOCKER_CMD ps >/dev/null 2>&1; then
+    DOCKER_CMD="sudo docker"
+fi
+
 # Contar contenedores Docker corriendo
-RUNNING_CONTAINERS=$(docker ps -q 2>/dev/null | wc -l)
+RUNNING_CONTAINERS=$($DOCKER_CMD ps -q 2>/dev/null | wc -l)
 
 # Contar todos los contenedores (corriendo y detenidos)
-TOTAL_CONTAINERS=$(docker ps -aq 2>/dev/null | wc -l)
+TOTAL_CONTAINERS=$($DOCKER_CMD ps -aq 2>/dev/null | wc -l)
 
 # Obtener nombre del Auto Scaling Group desde metadata
-ASG_NAME=$(aws autoscaling describe-auto-scaling-instances \
-  --instance-ids "$INSTANCE_ID" \
-  --region "$AWS_REGION" \
-  --query 'AutoScalingInstances[0].AutoScalingGroupName' \
-  --output text 2>/dev/null || echo "unknown")
+# Intentar varias veces con retry
+ASG_NAME="unknown"
+for i in {1..3}; do
+    ASG_NAME=$(aws autoscaling describe-auto-scaling-instances \
+      --instance-ids "$INSTANCE_ID" \
+      --region "$AWS_REGION" \
+      --query 'AutoScalingInstances[0].AutoScalingGroupName' \
+      --output text 2>/dev/null)
+    if [ "$ASG_NAME" != "None" ] && [ -n "$ASG_NAME" ] && [ "$ASG_NAME" != "unknown" ]; then
+        break
+    fi
+    sleep 1
+done
 
-# Enviar metricas a CloudWatch
+# Si aun no tenemos el ASG name, intentar obtenerlo de tags de la instancia
+if [ "$ASG_NAME" == "unknown" ] || [ "$ASG_NAME" == "None" ] || [ -z "$ASG_NAME" ]; then
+    ASG_NAME=$(aws ec2 describe-instances \
+      --instance-ids "$INSTANCE_ID" \
+      --region "$AWS_REGION" \
+      --query 'Reservations[0].Instances[0].Tags[?Key==`aws:autoscaling:groupName`].Value' \
+      --output text 2>/dev/null)
+fi
+
+# Si aun no tenemos el ASG name, usar un valor por defecto basado en el nombre del proyecto
+if [ "$ASG_NAME" == "unknown" ] || [ "$ASG_NAME" == "None" ] || [ -z "$ASG_NAME" ]; then
+    ASG_NAME="genius-dev-asg"
+fi
+
+# Enviar metricas a CloudWatch con logging de errores
+TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%S)
+ERROR_LOG="/var/log/docker-monitor-errors.log"
+
+# Enviar RunningContainers
 aws cloudwatch put-metric-data \
   --namespace "Docker/Containers" \
-  --metric-data MetricName=RunningContainers,Value=$RUNNING_CONTAINERS,Unit=Count,Timestamp=$(date -u +%Y-%m-%dT%H:%M:%S) \
+  --metric-data MetricName=RunningContainers,Value=$RUNNING_CONTAINERS,Unit=Count,Timestamp=$TIMESTAMP \
   --dimensions InstanceId=$INSTANCE_ID,AutoScalingGroupName=$ASG_NAME \
-  --region "$AWS_REGION" 2>/dev/null
+  --region "$AWS_REGION" >> $ERROR_LOG 2>&1
 
+# Enviar TotalContainers
 aws cloudwatch put-metric-data \
   --namespace "Docker/Containers" \
-  --metric-data MetricName=TotalContainers,Value=$TOTAL_CONTAINERS,Unit=Count,Timestamp=$(date -u +%Y-%m-%dT%H:%M:%S) \
+  --metric-data MetricName=TotalContainers,Value=$TOTAL_CONTAINERS,Unit=Count,Timestamp=$TIMESTAMP \
   --dimensions InstanceId=$INSTANCE_ID,AutoScalingGroupName=$ASG_NAME \
-  --region "$AWS_REGION" 2>/dev/null
+  --region "$AWS_REGION" >> $ERROR_LOG 2>&1
 
 # Log para debugging
-echo "$(date): Running containers: $RUNNING_CONTAINERS, Total containers: $TOTAL_CONTAINERS" >> /var/log/docker-monitor.log
+echo "$(date): Running containers: $RUNNING_CONTAINERS, Total containers: $TOTAL_CONTAINERS, ASG: $ASG_NAME" >> /var/log/docker-monitor.log
 DOCKERMONEOF
 
 chmod +x /usr/local/bin/monitor-docker-containers.sh

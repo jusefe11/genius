@@ -243,10 +243,11 @@ switch ($option) {
             
             if ($confirm -eq "S" -or $confirm -eq "s") {
                 Write-Host "`nDeteniendo todos los contenedores Docker..." -ForegroundColor Yellow
+                # Intentar sin sudo primero, luego con sudo si es necesario
                 $stopOutput = & aws ssm send-command `
                     --instance-ids $instanceId `
                     --document-name "AWS-RunShellScript" `
-                    --parameters "commands=['sudo docker stop $(sudo docker ps -q)']" `
+                    --parameters "commands=['CONTAINERS=$(docker ps -q 2>/dev/null); if [ -z \"$CONTAINERS\" ]; then CONTAINERS=$(sudo docker ps -q 2>/dev/null); fi; if [ -n \"$CONTAINERS\" ]; then docker stop $CONTAINERS 2>/dev/null || sudo docker stop $CONTAINERS; fi']" `
                     --output json 2>&1
                 if ($LASTEXITCODE -eq 0) {
                     $stopResult = ($stopOutput -join "`n") | ConvertFrom-Json
@@ -284,10 +285,11 @@ switch ($option) {
         }
         else {
             Write-Host "`nVerificando estado actual de contenedores Docker..." -ForegroundColor Yellow
+            # Intentar sin sudo primero, luego con sudo si es necesario
             $statusOutput = & aws ssm send-command `
                 --instance-ids $instanceId `
                 --document-name "AWS-RunShellScript" `
-                --parameters "commands=['echo \"Contenedores corriendo:\"; sudo docker ps --format \"table {{.ID}}\\t{{.Names}}\\t{{.Status}}\"; echo \"\\nTotal:\"; sudo docker ps -q | wc -l']" `
+                --parameters "commands=['DOCKER_CMD=\"docker\"; if ! docker ps >/dev/null 2>&1; then DOCKER_CMD=\"sudo docker\"; fi; echo \"Contenedores corriendo:\"; $DOCKER_CMD ps --format \"table {{.ID}}\\t{{.Names}}\\t{{.Status}}\"; echo \"\\nTotal:\"; $DOCKER_CMD ps -q | wc -l']" `
                 --output json 2>&1
             if ($LASTEXITCODE -eq 0) {
                 $statusResult = ($statusOutput -join "`n") | ConvertFrom-Json
