@@ -35,8 +35,10 @@ Write-Host "     - Actualiza script Docker, satura CPU y detiene contenedor" -Fo
 Write-Host ""
 Write-Host "VERIFICACION:" -ForegroundColor White
 Write-Host "  3. Verificar estado de todas las alarmas" -ForegroundColor Green
+Write-Host "  5. Diagnosticar metricas Docker (verificar por que no aparecen datos)" -ForegroundColor Yellow
+Write-Host "  6. FORZAR envio de metricas Docker AHORA (solucion rapida)" -ForegroundColor Magenta
 Write-Host ""
-Write-Host "Selecciona una opcion (1-4):" -ForegroundColor Cyan
+Write-Host "Selecciona una opcion (1-6):" -ForegroundColor Cyan
 $option = Read-Host
 
 if (-not $option -or $option -eq "") {
@@ -209,17 +211,95 @@ switch ($option) {
             Start-Sleep -Seconds 5
             Write-Host "OK stress-ng instalado" -ForegroundColor Green
             
-            Write-Host "`nGenerando carga de CPU al 100% por 3 minutos..." -ForegroundColor Yellow
-            Write-Host "Esto activara la alarma inmediatamente (1 minuto) con CPU > 80%" -ForegroundColor Cyan
+            Write-Host "`n¿Cuánto tiempo quieres saturar la CPU? (minutos, default: 5):" -ForegroundColor Cyan
+            $durationInput = Read-Host
+            if (-not $durationInput -or $durationInput -eq "") {
+                $durationMinutes = 5
+            } else {
+                $durationMinutes = [int]$durationInput
+            }
+            $durationSeconds = $durationMinutes * 60
             
+            Write-Host "`nGenerando carga de CPU al 100% por $durationMinutes minutos..." -ForegroundColor Yellow
+            Write-Host "Esto activara la alarma inmediatamente (1 minuto) con CPU > 80%" -ForegroundColor Cyan
+            Write-Host "El grafico mostrara CPU cerca de 100% durante $durationMinutes minutos" -ForegroundColor Cyan
+            
+            # Método más agresivo y directo para saturar CPU
+            Write-Host "Deteniendo cualquier proceso stress-ng anterior..." -ForegroundColor Gray
+            $killOutput = & aws ssm send-command `
+                --instance-ids $instanceId `
+                --document-name "AWS-RunShellScript" `
+                --parameters "commands=['sudo pkill -9 stress-ng 2>/dev/null || true']" `
+                --output json 2>&1 | Out-Null
+            Start-Sleep -Seconds 2
+            
+            # Usar todos los CPUs disponibles y método más simple
+            Write-Host "Iniciando stress-ng con TODOS los CPUs disponibles..." -ForegroundColor Yellow
+            Write-Host "Esto generara carga al 100% en todos los cores" -ForegroundColor Cyan
+            
+            # Método más simple y directo - construir el comando con la duración
+            $stressTimeout = "${durationSeconds}s"
+            $cpuCommands = @(
+                'sudo pkill -9 stress-ng yes 2>/dev/null || true',
+                'CPU_COUNT=$(nproc)',
+                'echo "CPUs disponibles: $CPU_COUNT"',
+                "sudo nohup stress-ng --cpu `$CPU_COUNT --timeout $stressTimeout > /tmp/stress-ng.log 2>&1 &",
+                'sleep 5',
+                'if pgrep -f stress-ng > /dev/null; then echo "OK: stress-ng corriendo"; ps aux | grep stress-ng | grep -v grep | head -2; else echo "ERROR: stress-ng no inicio"; fi'
+            )
+            $cpuCommandsJson = ($cpuCommands | ConvertTo-Json -Compress)
             $cpuOutput = & aws ssm send-command `
                 --instance-ids $instanceId `
                 --document-name "AWS-RunShellScript" `
-                --parameters "commands=['nohup sudo stress-ng --cpu 4 --timeout 180s > /tmp/stress-ng.log 2>&1 &']" `
+                --parameters "commands=$cpuCommandsJson" `
                 --output json 2>&1
+            
             if ($LASTEXITCODE -eq 0) {
-                Write-Host "OK Comando enviado" -ForegroundColor Green
+                try {
+                    $cpuResult = ($cpuOutput -join "`n") | ConvertFrom-Json
+                    $cpuCommandId = $cpuResult.Command.CommandId
+                } catch {
+                    Write-Host "ERROR: No se pudo parsear la respuesta de AWS SSM" -ForegroundColor Red
+                    $errorOutput = $cpuOutput -join [Environment]::NewLine
+                    Write-Host "Respuesta: $errorOutput" -ForegroundColor Gray
+                    break
+                }
+                Start-Sleep -Seconds 5
                 
+                # Verificar que stress-ng esté corriendo
+                $verifyOutput = & aws ssm get-command-invocation `
+                    --command-id $cpuCommandId `
+                    --instance-id $instanceId `
+                    --output json 2>&1
+                
+                if ($LASTEXITCODE -eq 0) {
+                    $verifyResult = ($verifyOutput -join "`n") | ConvertFrom-Json
+                    $output = $verifyResult.StandardOutputContent
+                    
+                    if ($output -match "ERROR") {
+                        Write-Host "ERROR: stress-ng no se inicio correctamente" -ForegroundColor Red
+                        Write-Host "Salida: $output" -ForegroundColor Gray
+                    } else {
+                        Write-Host "OK stress-ng esta corriendo" -ForegroundColor Green
+                        if ($output -match "stress-ng") {
+                            $lines = $output -split "`n"
+                            $processLine = $lines | Select-String 'stress-ng' | Select-Object -First 1
+                            if ($processLine) {
+                                Write-Host "Proceso verificado: $processLine" -ForegroundColor Gray
+                            }
+                        }
+                    }
+                } else {
+                    Write-Host "ERROR: No se pudo obtener el resultado del comando" -ForegroundColor Red
+                }
+            } else {
+                Write-Host "ERROR: Fallo al enviar comando a AWS SSM" -ForegroundColor Red
+                Write-Host "Salida del error:" -ForegroundColor Yellow
+                Write-Host ($cpuOutput -join "`n") -ForegroundColor Gray
+                break
+            }
+            
+            if ($LASTEXITCODE -eq 0) {
                 Write-Host "`nEsperando 70 segundos para que CloudWatch procese las metricas..." -ForegroundColor Yellow
                 Start-Sleep -Seconds 70
                 
@@ -570,6 +650,236 @@ switch ($option) {
         if ($openDashboard -eq "S" -or $openDashboard -eq "s") {
             Start-Process $dashboardUrl
             Write-Host "`nDashboard abierto. Refresca la pagina en 1-2 minutos para ver los cambios." -ForegroundColor Green
+        }
+    }
+    
+    "5" {
+        # Diagnosticar metricas Docker
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "DIAGNOSTICO: Metricas Docker" -ForegroundColor Yellow
+        Write-Host "========================================" -ForegroundColor Cyan
+        
+        $instances = Get-EC2Instances
+        if (-not $instances) { break }
+        
+        $instanceId = $instances[0][0]
+        Write-Host "`nUsando instancia: $instanceId" -ForegroundColor Cyan
+        
+        Write-Host "`nVerificando componentes del monitoreo Docker..." -ForegroundColor Yellow
+        
+        # 1. Verificar si el script existe
+        Write-Host "`n[1/6] Verificando si el script existe..." -ForegroundColor Cyan
+        $checkScript = & aws ssm send-command `
+            --instance-ids $instanceId `
+            --document-name "AWS-RunShellScript" `
+            --parameters "commands=['if [ -f /usr/local/bin/monitor-docker-containers.sh ]; then echo \"OK Script existe\"; ls -lh /usr/local/bin/monitor-docker-containers.sh; else echo \"ERROR Script NO existe\"; fi']" `
+            --output json 2>&1
+        
+        if ($LASTEXITCODE -eq 0) {
+            $checkResult = ($checkScript -join "`n") | ConvertFrom-Json
+            $checkId = $checkResult.Command.CommandId
+            Start-Sleep -Seconds 3
+            $scriptStatus = & aws ssm get-command-invocation --command-id $checkId --instance-id $instanceId --output json 2>&1 | ConvertFrom-Json
+            Write-Host "  $($scriptStatus.StandardOutputContent)" -ForegroundColor White
+        }
+        
+        # 2. Verificar cron job
+        Write-Host "`n[2/6] Verificando cron job..." -ForegroundColor Cyan
+        $checkCron = & aws ssm send-command `
+            --instance-ids $instanceId `
+            --document-name "AWS-RunShellScript" `
+            --parameters "commands=['if grep -q monitor-docker-containers /etc/crontab 2>/dev/null; then echo \"OK Cron job configurado:\"; grep monitor-docker-containers /etc/crontab; else echo \"ERROR Cron job NO configurado\"; fi']" `
+            --output json 2>&1
+        
+        if ($LASTEXITCODE -eq 0) {
+            $cronResult = ($checkCron -join "`n") | ConvertFrom-Json
+            $cronId = $cronResult.Command.CommandId
+            Start-Sleep -Seconds 3
+            $cronStatus = & aws ssm get-command-invocation --command-id $cronId --instance-id $instanceId --output json 2>&1 | ConvertFrom-Json
+            Write-Host "  $($cronStatus.StandardOutputContent)" -ForegroundColor White
+        }
+        
+        # 3. Verificar contenedores Docker
+        Write-Host "`n[3/6] Verificando contenedores Docker..." -ForegroundColor Cyan
+        $dockerCheckCmd = 'DOCKER_CMD="docker"; if ! docker ps >/dev/null 2>&1; then DOCKER_CMD="sudo docker"; fi; echo "Contenedores corriendo:"; $DOCKER_CMD ps --format "table {{.ID}}\t{{.Names}}\t{{.Status}}"; echo "\nTotal corriendo: $($DOCKER_CMD ps -q | wc -l)"; echo "Total todos: $($DOCKER_CMD ps -aq | wc -l)"'
+        $dockerCommands = @($dockerCheckCmd)
+        $dockerCommandsJson = ($dockerCommands | ConvertTo-Json -Compress)
+        $checkDocker = & aws ssm send-command `
+            --instance-ids $instanceId `
+            --document-name "AWS-RunShellScript" `
+            --parameters "commands=$dockerCommandsJson" `
+            --output json 2>&1
+        
+        if ($LASTEXITCODE -eq 0) {
+            $dockerResult = ($checkDocker -join "`n") | ConvertFrom-Json
+            $dockerId = $dockerResult.Command.CommandId
+            Start-Sleep -Seconds 3
+            $dockerStatus = & aws ssm get-command-invocation --command-id $dockerId --instance-id $instanceId --output json 2>&1 | ConvertFrom-Json
+            Write-Host "  $($dockerStatus.StandardOutputContent)" -ForegroundColor White
+        }
+        
+        # 4. Verificar logs de errores
+        Write-Host "`n[4/6] Verificando logs de errores..." -ForegroundColor Cyan
+        $checkLogs = & aws ssm send-command `
+            --instance-ids $instanceId `
+            --document-name "AWS-RunShellScript" `
+            --parameters "commands=['if [ -f /var/log/docker-monitor-errors.log ]; then echo \"Ultimas 10 lineas del log de errores:\"; tail -n 10 /var/log/docker-monitor-errors.log; else echo \"OK No hay log de errores\"; fi']" `
+            --output json 2>&1
+        
+        if ($LASTEXITCODE -eq 0) {
+            $logsResult = ($checkLogs -join "`n") | ConvertFrom-Json
+            $logsId = $logsResult.Command.CommandId
+            Start-Sleep -Seconds 3
+            $logsStatus = & aws ssm get-command-invocation --command-id $logsId --instance-id $instanceId --output json 2>&1 | ConvertFrom-Json
+            Write-Host "  $($logsStatus.StandardOutputContent)" -ForegroundColor White
+        }
+        
+        # 5. Ejecutar script manualmente
+        Write-Host "`n[5/6] Ejecutando script manualmente..." -ForegroundColor Cyan
+        $runScript = & aws ssm send-command `
+            --instance-ids $instanceId `
+            --document-name "AWS-RunShellScript" `
+            --parameters "commands=['/usr/local/bin/monitor-docker-containers.sh 2>&1']" `
+            --output json 2>&1
+        
+        if ($LASTEXITCODE -eq 0) {
+            $runResult = ($runScript -join "`n") | ConvertFrom-Json
+            $runId = $runResult.Command.CommandId
+            Start-Sleep -Seconds 3
+            $runStatus = & aws ssm get-command-invocation --command-id $runId --instance-id $instanceId --output json 2>&1 | ConvertFrom-Json
+            Write-Host "  Salida del script:" -ForegroundColor White
+            Write-Host "  $($runStatus.StandardOutputContent)" -ForegroundColor Gray
+            if ($runStatus.StandardErrorContent) {
+                Write-Host "  Errores:" -ForegroundColor Red
+                Write-Host "  $($runStatus.StandardErrorContent)" -ForegroundColor Red
+            }
+        }
+        
+        # 6. Verificar metricas en CloudWatch
+        Write-Host "`n[6/6] Verificando metricas en CloudWatch (ultimos 10 minutos)..." -ForegroundColor Cyan
+        $asgName = & aws autoscaling describe-auto-scaling-instances --instance-ids $instanceId --query 'AutoScalingInstances[0].AutoScalingGroupName' --output text 2>&1
+        if ($LASTEXITCODE -eq 0 -and $asgName) {
+            $metrics = & aws cloudwatch get-metric-statistics `
+                --namespace "Docker/Containers" `
+                --metric-name "RunningContainers" `
+                --dimensions Name=AutoScalingGroupName,Value=$asgName `
+                --start-time (Get-Date).AddMinutes(-10).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss") `
+                --end-time (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss") `
+                --period 60 `
+                --statistics Sum `
+                --output json 2>&1
+            
+            if ($LASTEXITCODE -eq 0) {
+                $metricsData = $metrics | ConvertFrom-Json
+                if ($metricsData.Datapoints.Count -gt 0) {
+                    Write-Host "  OK Se encontraron $($metricsData.Datapoints.Count) puntos de datos en CloudWatch" -ForegroundColor Green
+                    Write-Host "  Ultimos valores:" -ForegroundColor White
+                    $metricsData.Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 5 | ForEach-Object {
+                        Write-Host "    $($_.Timestamp): $($_.Sum) contenedores" -ForegroundColor Gray
+                    }
+                } else {
+                    Write-Host "  ERROR No se encontraron metricas en CloudWatch" -ForegroundColor Red
+                    Write-Host "  Esto significa que las metricas no se estan enviando correctamente" -ForegroundColor Yellow
+                }
+            } else {
+                Write-Host "  ERROR No se pudo consultar CloudWatch" -ForegroundColor Red
+            }
+        } else {
+            Write-Host "  ERROR No se pudo obtener el nombre del ASG" -ForegroundColor Red
+        }
+        
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "DIAGNOSTICO COMPLETADO" -ForegroundColor Green
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host "`nSi no hay metricas en CloudWatch, posibles causas:" -ForegroundColor Yellow
+        Write-Host "  1. El script no se esta ejecutando (verificar cron job)" -ForegroundColor White
+        Write-Host "  2. Errores al enviar metricas (revisar logs de errores)" -ForegroundColor White
+        Write-Host "  3. Permisos IAM insuficientes (verificar rol de la instancia)" -ForegroundColor White
+        Write-Host "  4. El nombre del ASG no coincide" -ForegroundColor White
+        Write-Host "`nSolucion: Ejecuta la opcion 4 para actualizar el script en todas las instancias" -ForegroundColor Cyan
+    }
+    
+    "6" {
+        # FORZAR envio de metricas Docker inmediatamente
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "FORZAR ENVIO DE METRICAS DOCKER" -ForegroundColor Magenta
+        Write-Host "========================================" -ForegroundColor Cyan
+        
+        $instances = Get-EC2Instances
+        if (-not $instances) { break }
+        
+        Write-Host "`nPASO 1: Actualizando script Docker en todas las instancias..." -ForegroundColor Yellow
+        Update-DockerMonitorScript
+        
+        Write-Host "`nPASO 2: Ejecutando script de monitoreo en todas las instancias..." -ForegroundColor Yellow
+        foreach ($instance in $instances) {
+            $instId = $instance[0]
+            Write-Host "  Ejecutando en instancia: $instId" -ForegroundColor Gray
+            $forceOutput = & aws ssm send-command `
+                --instance-ids $instId `
+                --document-name "AWS-RunShellScript" `
+                --parameters "commands=['/usr/local/bin/monitor-docker-containers.sh']" `
+                --output json 2>&1 | Out-Null
+        }
+        Write-Host "OK Script ejecutado en todas las instancias" -ForegroundColor Green
+        
+        Write-Host "`nPASO 3: Esperando 90 segundos para que CloudWatch procese las metricas..." -ForegroundColor Yellow
+        Write-Host "  (CloudWatch puede tardar hasta 2 minutos en mostrar los datos)" -ForegroundColor Gray
+        for ($i = 1; $i -le 90; $i++) {
+            Start-Sleep -Seconds 1
+            if ($i % 15 -eq 0) {
+                Write-Host "." -NoNewline -ForegroundColor Green
+            }
+        }
+        Write-Host "`nOK Tiempo de espera completado" -ForegroundColor Green
+        
+        Write-Host "`nPASO 4: Verificando metricas en CloudWatch..." -ForegroundColor Yellow
+        $instanceId = $instances[0][0]
+        $asgName = & aws autoscaling describe-auto-scaling-instances --instance-ids $instanceId --query 'AutoScalingInstances[0].AutoScalingGroupName' --output text 2>&1
+        if ($LASTEXITCODE -eq 0 -and $asgName) {
+            $metrics = & aws cloudwatch get-metric-statistics `
+                --namespace "Docker/Containers" `
+                --metric-name "RunningContainers" `
+                --dimensions Name=AutoScalingGroupName,Value=$asgName `
+                --start-time (Get-Date).AddMinutes(-5).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss") `
+                --end-time (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss") `
+                --period 60 `
+                --statistics Sum `
+                --output json 2>&1
+            
+            if ($LASTEXITCODE -eq 0) {
+                $metricsData = $metrics | ConvertFrom-Json
+                if ($metricsData.Datapoints.Count -gt 0) {
+                    Write-Host "  [OK] EXITO: Se encontraron $($metricsData.Datapoints.Count) puntos de datos en CloudWatch" -ForegroundColor Green
+                    Write-Host "  Ultimos valores:" -ForegroundColor White
+                    $metricsData.Datapoints | Sort-Object Timestamp -Descending | Select-Object -First 3 | ForEach-Object {
+                        Write-Host "    $($_.Timestamp): $($_.Sum) contenedores" -ForegroundColor Gray
+                    }
+                    Write-Host "`n  [OK] Las metricas YA ESTAN en CloudWatch" -ForegroundColor Green
+                    Write-Host "  Refresca el dashboard en 1-2 minutos para ver los datos" -ForegroundColor Yellow
+                } else {
+                    Write-Host "  [ADVERTENCIA] AUN NO hay metricas en CloudWatch" -ForegroundColor Yellow
+                    Write-Host "  Esto puede tardar hasta 2 minutos adicionales" -ForegroundColor Gray
+                    Write-Host "  Refresca el dashboard en unos minutos" -ForegroundColor Yellow
+                }
+            } else {
+                Write-Host "  [ADVERTENCIA] No se pudo verificar CloudWatch, pero las metricas deberian aparecer pronto" -ForegroundColor Yellow
+            }
+        }
+        
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "PROCESO COMPLETADO" -ForegroundColor Green
+        Write-Host "========================================" -ForegroundColor Cyan
+        Write-Host "`nINSTRUCCIONES:" -ForegroundColor Yellow
+        Write-Host "  1. Espera 1-2 minutos adicionales" -ForegroundColor White
+        Write-Host "  2. Refresca el dashboard de CloudWatch" -ForegroundColor White
+        Write-Host "  3. Si aun no aparecen datos, ejecuta la opcion 5 (Diagnostico)" -ForegroundColor White
+        Write-Host "`nDashboard: $dashboardUrl" -ForegroundColor Cyan
+        
+        Write-Host "`n¿Quieres abrir el dashboard ahora? (S/N):" -ForegroundColor Cyan
+        $openDashboard = Read-Host
+        if ($openDashboard -eq "S" -or $openDashboard -eq "s") {
+            Start-Process $dashboardUrl
         }
     }
     

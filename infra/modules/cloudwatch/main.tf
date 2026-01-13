@@ -50,35 +50,6 @@ resource "aws_cloudwatch_metric_alarm" "high_cpu" {
   )
 }
 
-# Alarma 2: Contenedores Docker caidos (solo para dev)
-# Esta alarma se activa cuando el numero total de contenedores corriendo en el ASG es menor al esperado
-# El threshold se calcula como: expected_containers_per_instance * min_instances
-resource "aws_cloudwatch_metric_alarm" "docker_containers_down" {
-  count = var.environment == "dev" ? 1 : 0
-  
-  alarm_name          = "${var.project_name}-${var.environment}-docker-containers-down"
-  comparison_operator = "LessThanThreshold"
-  evaluation_periods  = 1
-  metric_name         = "RunningContainers"
-  namespace           = "Docker/Containers"
-  period              = 60
-  statistic           = "Sum"
-  threshold           = var.expected_docker_containers
-  alarm_description   = "Alerta cuando el numero total de contenedores Docker corriendo en el ASG es menor al esperado. La metrica muestra cuantos contenedores estan arriba en total."
-  treat_missing_data  = "breaching"
-
-  dimensions = {
-    AutoScalingGroupName = var.asg_name
-  }
-
-  tags = merge(
-    local.common_tags,
-    {
-      Name = "${var.project_name}-${var.environment}-docker-containers-down-alarm"
-      Type = "cloudwatch-alarm"
-    }
-  )
-}
 
 # ==========================================
 # DASHBOARD
@@ -92,12 +63,12 @@ resource "aws_cloudwatch_dashboard" "main" {
 
   dashboard_body = jsonencode({
     widgets = [
-      # Widget 1: CPU Usage
+      # Widget 1: CPU Usage (único widget)
       {
         type   = "metric"
         x      = 0
         y      = 0
-        width  = 12
+        width  = 24
         height = 8
 
         properties = {
@@ -133,53 +104,6 @@ resource "aws_cloudwatch_dashboard" "main" {
                 label     = "Umbral de Alarma (80%)"
                 color     = "#ff7f0e"
                 fill      = "above"
-                visible   = true
-                yAxis     = "left"
-              }
-            ]
-          }
-        }
-      },
-      # Widget 2: Docker Containers
-      {
-        type   = "metric"
-        x      = 12
-        y      = 0
-        width  = 12
-        height = 8
-
-        properties = {
-          metrics = [
-            [
-              "Docker/Containers",
-              "RunningContainers",
-              "AutoScalingGroupName",
-              var.asg_name,
-              {
-                stat   = "Sum"
-                label  = "Contenedores Docker Corriendo"
-                color  = "#2ca02c"
-              }
-            ]
-          ]
-          period = 60
-          stat   = "Sum"
-          region = data.aws_region.current.name
-          title  = "Docker Containers - Contenedores Corriendo"
-          view   = "timeSeries"
-          yAxis = {
-            left = {
-              min = 0
-              label = "Cantidad de Contenedores"
-            }
-          }
-          annotations = {
-            horizontal = [
-              {
-                value     = var.expected_docker_containers
-                label     = "Contenedores Esperados"
-                color     = "#ff7f0e"
-                fill      = "below"
                 visible   = true
                 yAxis     = "left"
               }

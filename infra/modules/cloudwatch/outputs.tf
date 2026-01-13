@@ -19,12 +19,3 @@ output "high_cpu_alarm_name" {
   value       = aws_cloudwatch_metric_alarm.high_cpu.alarm_name
 }
 
-output "docker_containers_down_alarm_arn" {
-  description = "ARN de la alarma de contenedores Docker caidos"
-  value       = var.environment == "dev" ? aws_cloudwatch_metric_alarm.docker_containers_down[0].arn : null
-}
-
-output "docker_containers_down_alarm_name" {
-  description = "Nombre de la alarma de contenedores Docker caidos"
-  value       = var.environment == "dev" ? aws_cloudwatch_metric_alarm.docker_containers_down[0].alarm_name : null
-}
