@@ -87,16 +87,11 @@ api_keys = {
 app_secrets = {
   jwt_secret = {
     description   = "JWT signing secret para autenticacion"
-    secret_string = jsonencode({
-      secret = "genius-jwt-secret-key-2024-super-secure"
-      algorithm = "HS256"
-    })
+    secret_string = "{\"secret\":\"genius-jwt-secret-key-2024-super-secure\",\"algorithm\":\"HS256\"}"
   }
   encryption_key = {
     description   = "Clave de encriptacion para datos sensibles"
-    secret_string = jsonencode({
-      key = "genius-encryption-key-32-chars-long-12345"
-    })
+    secret_string = "{\"key\":\"genius-encryption-key-32-chars-long-12345\"}"
   }
 }
 
