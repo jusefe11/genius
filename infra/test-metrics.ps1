@@ -30,10 +30,13 @@ Write-Host ""
 Write-Host "  2. Widget 2: Docker Containers [docker-containers-down]" -ForegroundColor Red
 Write-Host "     - Activa cuando RunningContainers < 2 (contenedores caidos)" -ForegroundColor Gray
 Write-Host ""
+Write-Host "  4. TODO: Actualizar Script Docker + CPU + Docker" -ForegroundColor Magenta
+Write-Host "     - Actualiza script Docker, satura CPU y detiene contenedor" -ForegroundColor Gray
+Write-Host ""
 Write-Host "VERIFICACION:" -ForegroundColor White
 Write-Host "  3. Verificar estado de todas las alarmas" -ForegroundColor Green
 Write-Host ""
-Write-Host "Selecciona una opcion (1-3):" -ForegroundColor Cyan
+Write-Host "Selecciona una opcion (1-4):" -ForegroundColor Cyan
 $option = Read-Host
 
 if (-not $option -or $option -eq "") {
@@ -100,6 +103,80 @@ function Check-Alarm {
         Write-Host "  ERROR: $_" -ForegroundColor Red
         return $null
     }
+}
+
+# Funcion para actualizar script de monitoreo Docker
+function Update-DockerMonitorScript {
+    param([array]$instances)
+    
+    Write-Host "`nActualizando script de monitoreo Docker..." -ForegroundColor Yellow
+    
+    # Script corregido para monitoreo Docker
+    $scriptDockerCorregido = @'
+#!/bin/bash
+AWS_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region 2>/dev/null || echo "us-east-1")
+INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id 2>/dev/null)
+
+DOCKER_CMD="docker"
+if ! $DOCKER_CMD ps >/dev/null 2>&1; then
+    DOCKER_CMD="sudo docker"
+fi
+
+RUNNING_CONTAINERS=$($DOCKER_CMD ps -q 2>/dev/null | wc -l)
+TOTAL_CONTAINERS=$($DOCKER_CMD ps -aq 2>/dev/null | wc -l)
+
+ASG_NAME="unknown"
+for i in {1..3}; do
+    ASG_NAME=$(aws autoscaling describe-auto-scaling-instances --instance-ids "$INSTANCE_ID" --region "$AWS_REGION" --query 'AutoScalingInstances[0].AutoScalingGroupName' --output text 2>/dev/null)
+    if [ "$ASG_NAME" != "None" ] && [ -n "$ASG_NAME" ] && [ "$ASG_NAME" != "unknown" ]; then
+        break
+    fi
+    sleep 1
+done
+
+if [ "$ASG_NAME" == "unknown" ] || [ "$ASG_NAME" == "None" ] || [ -z "$ASG_NAME" ]; then
+    ASG_NAME=$(aws ec2 describe-instances --instance-ids "$INSTANCE_ID" --region "$AWS_REGION" --query 'Reservations[0].Instances[0].Tags[?Key==`aws:autoscaling:groupName`].Value' --output text 2>/dev/null)
+fi
+
+if [ "$ASG_NAME" == "unknown" ] || [ "$ASG_NAME" == "None" ] || [ -z "$ASG_NAME" ]; then
+    ASG_NAME="genius-dev-asg"
+fi
+
+TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%S)
+ERROR_LOG="/var/log/docker-monitor-errors.log"
+
+aws cloudwatch put-metric-data --namespace "Docker/Containers" --metric-data MetricName=RunningContainers,Value=$RUNNING_CONTAINERS,Unit=Count,Timestamp=$TIMESTAMP,Dimensions="[{Name=InstanceId,Value=$INSTANCE_ID},{Name=AutoScalingGroupName,Value=$ASG_NAME}]" --region "$AWS_REGION" >> $ERROR_LOG 2>&1
+
+aws cloudwatch put-metric-data --namespace "Docker/Containers" --metric-data MetricName=TotalContainers,Value=$TOTAL_CONTAINERS,Unit=Count,Timestamp=$TIMESTAMP,Dimensions="[{Name=InstanceId,Value=$INSTANCE_ID},{Name=AutoScalingGroupName,Value=$ASG_NAME}]" --region "$AWS_REGION" >> $ERROR_LOG 2>&1
+
+echo "$(date): Running containers: $RUNNING_CONTAINERS, Total containers: $TOTAL_CONTAINERS, ASG: $ASG_NAME" >> /var/log/docker-monitor.log
+'@
+    
+    foreach ($instance in $instances) {
+        $instId = $instance[0]
+        Write-Host "  Actualizando instancia: $instId" -ForegroundColor Gray
+        
+        # Crear comando para actualizar el script
+        $updateCommands = @(
+            "cat > /tmp/monitor-docker-fix.sh <<'SCRIPTEOF'",
+            $scriptDockerCorregido,
+            "SCRIPTEOF",
+            "sudo mv /tmp/monitor-docker-fix.sh /usr/local/bin/monitor-docker-containers.sh",
+            "sudo chmod +x /usr/local/bin/monitor-docker-containers.sh",
+            "sudo chown root:root /usr/local/bin/monitor-docker-containers.sh"
+        )
+        
+        $commandsJson = ($updateCommands | ConvertTo-Json -Compress)
+        
+        $updateOutput = & aws ssm send-command `
+            --instance-ids $instId `
+            --document-name "AWS-RunShellScript" `
+            --parameters "commands=$commandsJson" `
+            --output json 2>&1 | Out-Null
+    }
+    
+    Write-Host "OK Script de monitoreo actualizado en todas las instancias" -ForegroundColor Green
+    Start-Sleep -Seconds 3
 }
 
 # URL del dashboard
@@ -199,7 +276,7 @@ switch ($option) {
             $stopOutput = & aws ssm send-command `
                 --instance-ids $instanceId `
                 --document-name "AWS-RunShellScript" `
-                --parameters "commands=['sudo docker stop `$(sudo docker ps -q | head -n 1)']" `
+                --parameters "commands=['CONTAINER_ID=$(docker ps -q 2>/dev/null | head -n 1); if [ -z \"$CONTAINER_ID\" ]; then CONTAINER_ID=$(sudo docker ps -q 2>/dev/null | head -n 1); fi; if [ -n \"$CONTAINER_ID\" ]; then docker stop $CONTAINER_ID 2>/dev/null || sudo docker stop $CONTAINER_ID; echo \"Contenedor $CONTAINER_ID detenido\"; else echo \"No hay contenedores corriendo\"; fi']" `
                 --output json 2>&1
             if ($LASTEXITCODE -eq 0) {
                 $stopResult = ($stopOutput -join "`n") | ConvertFrom-Json
@@ -207,7 +284,6 @@ switch ($option) {
                 Write-Host "OK Comando enviado (Command ID: $stopCommandId)" -ForegroundColor Green
                 
                 Write-Host "`nForzando envio inmediato de metricas..." -ForegroundColor Yellow
-                # Ejecutar el script de monitoreo manualmente para enviar metricas inmediatamente
                 $forceMetricOutput = & aws ssm send-command `
                     --instance-ids $instanceId `
                     --document-name "AWS-RunShellScript" `
@@ -243,7 +319,6 @@ switch ($option) {
             
             if ($confirm -eq "S" -or $confirm -eq "s") {
                 Write-Host "`nDeteniendo todos los contenedores Docker..." -ForegroundColor Yellow
-                # Intentar sin sudo primero, luego con sudo si es necesario
                 $stopOutput = & aws ssm send-command `
                     --instance-ids $instanceId `
                     --document-name "AWS-RunShellScript" `
@@ -285,7 +360,6 @@ switch ($option) {
         }
         else {
             Write-Host "`nVerificando estado actual de contenedores Docker..." -ForegroundColor Yellow
-            # Intentar sin sudo primero, luego con sudo si es necesario
             $statusOutput = & aws ssm send-command `
                 --instance-ids $instanceId `
                 --document-name "AWS-RunShellScript" `
@@ -327,6 +401,164 @@ switch ($option) {
             Write-Host "Nombre: $($alarmInfo.Name)" -ForegroundColor Gray
             Check-Alarm $alarmInfo.Name
             Write-Host ""
+        }
+    }
+    
+    "4" {
+        # TODO: Actualizar Script Docker + Saturar CPU + Detener Contenedor Docker
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "TODO: CPU + Docker Completo" -ForegroundColor Magenta
+        Write-Host "Actualizar Script + Saturar CPU + Detener Docker" -ForegroundColor Magenta
+        Write-Host "========================================`n" -ForegroundColor Cyan
+        
+        $instances = Get-EC2Instances
+        if (-not $instances) { break }
+        
+        $instanceId = $instances[0][0]
+        Write-Host "Usando instancia: $instanceId" -ForegroundColor Cyan
+        
+        # PASO 0: Actualizar script de monitoreo Docker
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "PASO 0: Actualizar Script de Monitoreo Docker" -ForegroundColor Yellow
+        Write-Host "========================================" -ForegroundColor Cyan
+        Update-DockerMonitorScript -instances $instances
+        
+        # PASO 1: Saturar CPU
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "PASO 1: Saturar CPU" -ForegroundColor Yellow
+        Write-Host "========================================" -ForegroundColor Cyan
+        
+        Write-Host "`nInstalando stress-ng..." -ForegroundColor Yellow
+        $installOutput = & aws ssm send-command `
+            --instance-ids $instanceId `
+            --document-name "AWS-RunShellScript" `
+            --parameters "commands=['sudo yum install -y stress-ng']" `
+            --output json 2>&1
+        
+        if ($LASTEXITCODE -eq 0) {
+            Start-Sleep -Seconds 5
+            Write-Host "OK stress-ng instalado" -ForegroundColor Green
+            
+            Write-Host "`nGenerando carga de CPU al 100% por 5 minutos..." -ForegroundColor Yellow
+            Write-Host "Esto activara la alarma de CPU alta (Widget 1)" -ForegroundColor Cyan
+            
+            $cpuOutput = & aws ssm send-command `
+                --instance-ids $instanceId `
+                --document-name "AWS-RunShellScript" `
+                --parameters "commands=['nohup sudo stress-ng --cpu 4 --timeout 300s > /tmp/stress-ng.log 2>&1 &']" `
+                --output json 2>&1
+            
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "OK Carga de CPU iniciada" -ForegroundColor Green
+            } else {
+                Write-Host "ERROR Error al iniciar carga de CPU" -ForegroundColor Red
+            }
+        } else {
+            Write-Host "ERROR Error al instalar stress-ng" -ForegroundColor Red
+        }
+        
+        # PASO 2: Detener contenedor Docker
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "PASO 2: Detener Contenedor Docker" -ForegroundColor Yellow
+        Write-Host "========================================" -ForegroundColor Cyan
+        
+        Write-Host "`nDeteniendo un contenedor Docker..." -ForegroundColor Yellow
+        Write-Host "Esto activara la alarma de Docker containers caidos (Widget 2)" -ForegroundColor Cyan
+        
+        $stopOutput = & aws ssm send-command `
+            --instance-ids $instanceId `
+            --document-name "AWS-RunShellScript" `
+            --parameters "commands=['CONTAINER_ID=$(docker ps -q 2>/dev/null | head -n 1); if [ -z \"$CONTAINER_ID\" ]; then CONTAINER_ID=$(sudo docker ps -q 2>/dev/null | head -n 1); fi; if [ -n \"$CONTAINER_ID\" ]; then docker stop $CONTAINER_ID 2>/dev/null || sudo docker stop $CONTAINER_ID; echo \"Contenedor $CONTAINER_ID detenido\"; else echo \"No hay contenedores corriendo\"; fi']" `
+            --output json 2>&1
+        
+        if ($LASTEXITCODE -eq 0) {
+            $stopResult = ($stopOutput -join "`n") | ConvertFrom-Json
+            $stopCommandId = $stopResult.Command.CommandId
+            Write-Host "OK Comando enviado" -ForegroundColor Green
+            
+            Start-Sleep -Seconds 3
+            $stopCheck = & aws ssm get-command-invocation `
+                --command-id $stopCommandId `
+                --instance-id $instanceId `
+                --output json 2>&1
+            
+            if ($LASTEXITCODE -eq 0) {
+                $stopStatus = ($stopCheck -join "`n") | ConvertFrom-Json
+                Write-Host "  Resultado: $($stopStatus.StandardOutputContent)" -ForegroundColor White
+            }
+        } else {
+            Write-Host "ERROR Error al detener contenedor" -ForegroundColor Red
+        }
+        
+        # PASO 3: Forzar envio de metricas
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "PASO 3: Forzar Envio de Metricas" -ForegroundColor Yellow
+        Write-Host "========================================" -ForegroundColor Cyan
+        
+        Write-Host "`nForzando envio inmediato de metricas Docker en todas las instancias..." -ForegroundColor Yellow
+        foreach ($instance in $instances) {
+            $instId = $instance[0]
+            $forceMetricOutput = & aws ssm send-command `
+                --instance-ids $instId `
+                --document-name "AWS-RunShellScript" `
+                --parameters "commands=['/usr/local/bin/monitor-docker-containers.sh']" `
+                --output json 2>&1 | Out-Null
+        }
+        Write-Host "OK Metricas Docker forzadas en todas las instancias" -ForegroundColor Green
+        
+        # PASO 4: Esperar procesamiento
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "PASO 4: Esperar Procesamiento CloudWatch" -ForegroundColor Yellow
+        Write-Host "========================================" -ForegroundColor Cyan
+        
+        Write-Host "`nEsperando 70 segundos para que CloudWatch procese las metricas..." -ForegroundColor Yellow
+        Write-Host "  - CPU: Se procesara automaticamente cada 60 segundos" -ForegroundColor Gray
+        Write-Host "  - Docker: Metricas enviadas, esperando procesamiento..." -ForegroundColor Gray
+        
+        for ($i = 1; $i -le 70; $i++) {
+            Start-Sleep -Seconds 1
+            if ($i % 10 -eq 0) {
+                Write-Host "." -NoNewline -ForegroundColor Green
+            }
+        }
+        Write-Host "`nOK Tiempo de espera completado" -ForegroundColor Green
+        
+        # PASO 5: Verificar alarmas
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "PASO 5: Verificar Estado de Alarmas" -ForegroundColor Yellow
+        Write-Host "========================================" -ForegroundColor Cyan
+        
+        Check-Alarm "genius-dev-high-cpu"
+        Check-Alarm "genius-dev-docker-containers-down"
+        
+        Write-Host "`n========================================" -ForegroundColor Cyan
+        Write-Host "RESUMEN" -ForegroundColor Cyan
+        Write-Host "========================================" -ForegroundColor Cyan
+        
+        Write-Host "`nACCIONES REALIZADAS:" -ForegroundColor Yellow
+        Write-Host "  ✅ Script de monitoreo Docker actualizado" -ForegroundColor Green
+        Write-Host "  ✅ CPU saturada al 100% por 5 minutos" -ForegroundColor Green
+        Write-Host "  ✅ Un contenedor Docker detenido" -ForegroundColor Green
+        Write-Host "  ✅ Metricas Docker forzadas en todas las instancias" -ForegroundColor Green
+        
+        Write-Host "`nEN EL DASHBOARD DEBERIAS VER:" -ForegroundColor Yellow
+        Write-Host "  📊 Widget 1 (CPU Usage): CPU cerca de 100% (linea azul alta)" -ForegroundColor White
+        Write-Host "  📊 Widget 2 (Docker Containers): Menos contenedores corriendo (linea verde baja)" -ForegroundColor White
+        
+        Write-Host "`nNOTAS IMPORTANTES:" -ForegroundColor Yellow
+        Write-Host "  - Las metricas pueden tardar 1-2 minutos adicionales en aparecer" -ForegroundColor Gray
+        Write-Host "  - Refresca el dashboard si no ves cambios inmediatamente" -ForegroundColor Gray
+        Write-Host "  - La alarma de CPU se activara en ~60-90 segundos" -ForegroundColor Gray
+        Write-Host "  - La alarma de Docker se activara si RunningContainers < 2" -ForegroundColor Gray
+        
+        Write-Host "`nPara detener la carga de CPU manualmente:" -ForegroundColor Cyan
+        Write-Host "  aws ssm send-command --instance-ids $instanceId --document-name 'AWS-RunShellScript' --parameters 'commands=[\"sudo pkill stress-ng\"]'" -ForegroundColor White
+        
+        Write-Host "`n¿Quieres abrir el dashboard ahora? (S/N):" -ForegroundColor Cyan
+        $openDashboard = Read-Host
+        if ($openDashboard -eq "S" -or $openDashboard -eq "s") {
+            Start-Process $dashboardUrl
+            Write-Host "`nDashboard abierto. Refresca la pagina en 1-2 minutos para ver los cambios." -ForegroundColor Green
         }
     }
     
