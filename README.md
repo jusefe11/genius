@@ -1,495 +1,1412 @@
-# Genius Project - Sistema de Contratos
+# 🚀 Genius Project - Sistema de Contratos
 
-Proyecto de infraestructura como código con Terraform para desplegar un sistema de contratos en AWS, siguiendo buenas prácticas de arquitectura y seguridad.
+> **Infraestructura como Código (IaC)** con Terraform para desplegar una aplicación web escalable y segura en AWS, siguiendo las mejores prácticas de arquitectura cloud y seguridad empresarial.
 
-## 📋 Tabla de Contenidos
+---
 
-- [Estructura del Proyecto](#estructura-del-proyecto)
-- [Arquitectura](#arquitectura)
-- [Inicio Rápido](#inicio-rápido)
-- [Configuración por Ambiente](#configuración-por-ambiente)
-- [Módulos Terraform](#módulos-terraform)
-- [Configuración Avanzada](#configuración-avanzada)
-- [Scripts de Gestión](#scripts-de-gestión)
-- [Costos Estimados](#costos-estimados)
-- [Troubleshooting](#troubleshooting)
+## 📑 Tabla de Contenidos
 
-## Estructura del Proyecto
+1. [¿Qué es este proyecto?](#-qué-es-este-proyecto)
+2. [Características Principales](#-características-principales)
+3. [Arquitectura del Sistema](#-arquitectura-del-sistema)
+4. [Estructura del Proyecto](#-estructura-del-proyecto)
+5. [Requisitos Previos](#-requisitos-previos)
+6. [Guía de Inicio Rápido](#-guía-de-inicio-rápido)
+7. [Configuración por Ambiente](#-configuración-por-ambiente)
+8. [Módulos Terraform Detallados](#-módulos-terraform-detallados)
+9. [Gestión de Secretos](#-gestión-de-secretos)
+10. [Monitoreo y Alarmas](#-monitoreo-y-alarmas)
+11. [Scripts de Gestión](#-scripts-de-gestión)
+12. [Configuración Avanzada](#-configuración-avanzada)
+13. [Costos Estimados](#-costos-estimados)
+14. [Solución de Problemas](#-solución-de-problemas)
+15. [Referencias y Recursos](#-referencias-y-recursos)
+
+---
+
+## 🎯 ¿Qué es este proyecto?
+
+Este proyecto te permite desplegar una **infraestructura completa en AWS** de forma automatizada usando Terraform. La infraestructura incluye:
+
+- 🌐 **Red privada segura** (VPC) con subredes públicas y privadas
+- ⚖️ **Balanceador de carga** (ALB) para distribuir tráfico
+- 📈 **Auto Scaling** que ajusta automáticamente el número de servidores según la demanda
+- 🔐 **Gestión segura de secretos** usando AWS Secrets Manager
+- 📊 **Monitoreo y alertas** con CloudWatch
+- 🔒 **Acceso remoto seguro** sin necesidad de SSH
+
+**Ideal para**: Aplicaciones web que necesitan alta disponibilidad, seguridad y escalabilidad automática.
+
+---
+
+## ✨ Características Principales
+
+### 🔒 Seguridad de Nivel Empresarial
+
+- ✅ **Instancias en subredes privadas**: Los servidores no tienen IPs públicas, reduciendo la superficie de ataque
+- ✅ **Security Groups restrictivos**: Solo permiten el tráfico necesario (principio de mínimo privilegio)
+- ✅ **Secrets Manager integrado**: Las contraseñas y API keys nunca se almacenan en código
+- ✅ **Acceso remoto vía SSM Session Manager**: Sin necesidad de claves SSH o puertos abiertos
+- ✅ **Cifrado en tránsito y reposo**: Todos los secretos están cifrados
+
+### 📈 Alta Disponibilidad y Escalabilidad
+
+- ✅ **Multi-AZ (Multi-Zona de Disponibilidad)**: Los recursos se distribuyen en múltiples zonas para evitar fallos
+- ✅ **Auto Scaling automático**: El sistema ajusta el número de servidores según la carga (2-5 servidores por defecto)
+- ✅ **Health Checks**: El balanceador verifica constantemente que los servidores estén funcionando
+- ✅ **Recuperación automática**: Si un servidor falla, se reemplaza automáticamente
+
+### 📊 Monitoreo Completo
+
+- ✅ **Dashboard de CloudWatch**: Visualización en tiempo real de métricas clave
+- ✅ **Alarmas automáticas**: Notificaciones cuando algo va mal (CPU alto, errores, etc.)
+- ✅ **Métricas personalizadas**: Monitoreo de CPU, memoria, contenedores Docker, etc.
+
+### 🧩 Modularidad y Reutilización
+
+- ✅ **Módulos reutilizables**: La misma infraestructura se puede usar en dev, qa y producción
+- ✅ **Configuración por ambiente**: Cada ambiente tiene su propia configuración
+- ✅ **Fácil de mantener**: Cambios en un módulo se propagan a todos los ambientes
+
+---
+
+## 🏗️ Arquitectura del Sistema
+
+### Diagrama de Alto Nivel
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        INTERNET                              │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│     Application Load Balancer (ALB)                          │
+│     📍 Ubicación: Subredes Públicas                          │
+│     🔒 Security Group: Permite HTTP (80) y HTTPS (443)       │
+│     ⚖️  Distribuye tráfico entre servidores                  │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│              Target Group (Grupo de Destinos)                │
+│              Verifica salud de los servidores                │
+└───────────────────────────┬─────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│         Auto Scaling Group (ASG)                             │
+│         📍 Ubicación: Subredes Privadas                      │
+│         🔒 Security Group: Solo desde ALB                    │
+│         📊 Configuración: Min=2, Deseado=2, Max=5           │
+│                                                              │
+│         ┌──────────────┐  ┌──────────────┐                  │
+│         │  EC2 Server 1 │  │  EC2 Server 2│                  │
+│         │  (Privado)   │  │  (Privado)   │                  │
+│         │              │  │              │                  │
+│         │  • Docker    │  │  • Docker    │                  │
+│         │  • App       │  │  • App       │                  │
+│         │  • Secrets   │  │  • Secrets   │                  │
+│         └──────────────┘  └──────────────┘                  │
+└─────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────┐
+│              NAT Gateway (Acceso a Internet)                 │
+│              Permite a servidores privados                   │
+│              descargar actualizaciones                       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Flujo de Tráfico
+
+1. **Usuario accede a la aplicación** → Petición HTTP/HTTPS
+2. **ALB recibe la petición** → Verifica reglas de seguridad
+3. **ALB distribuye a un servidor** → Selecciona el servidor más saludable
+4. **Servidor procesa la petición** → Ejecuta la aplicación
+5. **Servidor responde** → Respuesta vuelve al usuario a través del ALB
+
+### Componentes de Seguridad
+
+- **Subredes Privadas**: Los servidores no tienen IPs públicas, solo pueden ser accedidos desde el ALB
+- **Security Groups**: Firewalls que controlan qué tráfico puede entrar y salir
+- **NAT Gateway**: Permite a los servidores privados acceder a Internet sin exponerlos
+
+---
+
+## 📁 Estructura del Proyecto
 
 ```
 genius/
-├── infra/
-│   ├── modules/              # Módulos reutilizables
-│   │   ├── vpc/              # Red (VPC, subredes, NAT Gateway)
-│   │   │   ├── main.tf
-│   │   │   ├── variables.tf
-│   │   │   └── outputs.tf
-│   │   ├── security_groups/  # Security Groups
-│   │   │   ├── main.tf
-│   │   │   ├── variables.tf
-│   │   │   └── outputs.tf
-│   │   ├── alb/              # Application Load Balancer
-│   │   │   ├── main.tf
-│   │   │   ├── variables.tf
-│   │   │   └── outputs.tf
-│   │   ├── autoscaling/      # Auto Scaling Group y EC2
-│   │   │   ├── main.tf
-│   │   │   ├── variables.tf
-│   │   │   ├── outputs.tf
-│   │   │   └── user_data.sh
-│   │   ├── cloudwatch/       # Monitoreo y alarmas
-│   │   │   ├── main.tf
-│   │   │   ├── variables.tf
-│   │   │   └── outputs.tf
-│   │   └── secrets-manager/  # Gestión de secretos
-│   │       ├── main.tf
-│   │       ├── variables.tf
-│   │       └── outputs.tf
-│   ├── backend-setup/        # Backend remoto (S3 + DynamoDB)
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   └── outputs.tf
-│   ├── envs/                 # Configuración por ambiente
-│   │   ├── dev/
-│   │   │   ├── main.tf
-│   │   │   ├── variables.tf
-│   │   │   ├── terraform.tfvars
-│   │   │   ├── provider.tf
-│   │   │   ├── backend.tf
-│   │   │   └── outputs.tf
-│   │   ├── qa/               # Misma estructura que dev
-│   │   └── prod/             # Misma estructura que dev
-│   ├── provider.tf
-│   ├── backend.tf
-│   └── variables.tf
-├── app/                      # Aplicación
-│   ├── Dockerfile
-│   ├── src/
-│   └── tests/
-├── .github/
+│
+├── 📂 infra/                          # Infraestructura como Código
+│   │
+│   ├── 📂 modules/                    # Módulos reutilizables de Terraform
+│   │   ├── 📂 vpc/                    # Red virtual (VPC, subredes, NAT)
+│   │   │   ├── main.tf                # Recursos principales
+│   │   │   ├── variables.tf           # Variables de entrada
+│   │   │   └── outputs.tf             # Valores de salida
+│   │   │
+│   │   ├── 📂 security_groups/        # Reglas de firewall
+│   │   ├── 📂 alb/                    # Balanceador de carga
+│   │   ├── 📂 autoscaling/            # Auto Scaling Group y servidores EC2
+│   │   │   └── user_data.sh           # Script que se ejecuta al iniciar servidores
+│   │   ├── 📂 cloudwatch/             # Monitoreo y alarmas
+│   │   └── 📂 secrets-manager/        # Gestión de secretos
+│   │
+│   ├── 📂 backend-setup/              # Configuración del backend remoto (S3 + DynamoDB)
+│   │   └── ...                        # Solo se ejecuta una vez
+│   │
+│   ├── 📂 envs/                       # Configuración por ambiente
+│   │   ├── 📂 dev/                    # Ambiente de desarrollo
+│   │   │   ├── main.tf                # Define qué módulos usar
+│   │   │   ├── variables.tf           # Variables disponibles
+│   │   │   ├── terraform.tfvars       # ⚙️ VALORES DE CONFIGURACIÓN (editar aquí)
+│   │   │   ├── provider.tf            # Configuración del proveedor AWS
+│   │   │   ├── backend.tf             # Dónde guardar el estado de Terraform
+│   │   │   └── outputs.tf             # Valores que queremos mostrar
+│   │   │
+│   │   ├── 📂 qa/                     # Ambiente de QA (misma estructura)
+│   │   └── 📂 prod/                   # Ambiente de producción (misma estructura)
+│   │
+│   ├── 📜 test-metrics.ps1            # Script para probar métricas de CloudWatch
+│   ├── 📜 verificar-secretos.ps1      # Script para verificar secretos
+│   └── 📜 visualizar-secretos.ps1     # Script para ver contenido de secretos
+│
+├── 📂 app/                            # Código de la aplicación
+│   ├── Dockerfile                     # Imagen Docker de la aplicación
+│   └── ...
+│
+├── 📂 .github/                        # Configuración de CI/CD
 │   └── workflows/
-│       └── terraform-pipeline.yml
-├── .gitignore
-└── README.md
+│       └── terraform-pipeline.yml    # Pipeline de despliegue automático
+│
+└── 📄 README.md                       # Este archivo
 ```
 
-## Arquitectura
+### Explicación de Archivos Clave
 
+- **`terraform.tfvars`**: ⚙️ **Archivo principal de configuración**. Aquí defines los valores específicos de tu ambiente (números de IP, nombres, etc.)
+- **`main.tf`**: Define qué módulos usar y cómo conectarlos
+- **`variables.tf`**: Define qué variables se pueden configurar
+- **`outputs.tf`**: Define qué información mostrar después del despliegue (URLs, IDs, etc.)
+- **`user_data.sh`**: Script que se ejecuta automáticamente cuando un servidor inicia (instala software, descarga secretos, etc.)
+
+---
+
+## 🔧 Requisitos Previos
+
+Antes de comenzar, necesitas tener instalado y configurado lo siguiente:
+
+### 1. Terraform (>= 1.0)
+
+**¿Qué es Terraform?** Herramienta que te permite definir infraestructura como código y desplegarla automáticamente.
+
+**Instalación:**
+
+**Windows (PowerShell):**
+```powershell
+# Descargar desde: https://www.terraform.io/downloads
+# O usar Chocolatey:
+choco install terraform
 ```
-Internet
-  ↓
-Application Load Balancer (ALB) [Subredes Públicas]
-  ├─ Security Group: alb-sg (permite 80/443 desde Internet)
-  └─ Target Group
-      ↓
-Auto Scaling Group (ASG) [Subredes Privadas]
-  ├─ Security Group: app-sg (solo desde alb-sg)
-  ├─ Min: 2 instancias | Deseado: 2 | Max: 5
-  ├─ IAM Role: SSM Session Manager (acceso remoto seguro)
-  └─ EC2 Instances (acceso a Internet vía NAT Gateway)
+
+**Linux/Mac:**
+```bash
+# Usando el gestor de paquetes de tu distribución
+# O descargar binario desde: https://www.terraform.io/downloads
 ```
 
-### Características Principales
+**Verificar instalación:**
+```bash
+terraform version
+# Debe mostrar: Terraform v1.x.x
+```
 
-- ✅ **Seguridad**: Instancias en subredes privadas, Security Groups restrictivos, Secrets Manager integrado, acceso remoto vía SSM Session Manager
-- ✅ **Alta Disponibilidad**: Multi-AZ, Auto Scaling, Health Checks
-- ✅ **Monitoreo**: CloudWatch Dashboard y alarmas (CPU, errores, hosts no saludables)
-- ✅ **Modularidad**: Módulos reutilizables entre ambientes (dev, qa, prod)
-- ✅ **Gestión de Secretos**: AWS Secrets Manager integrado (credenciales de BD, API keys, secretos genéricos)
+### 2. AWS CLI
 
-## Inicio Rápido
+**¿Qué es AWS CLI?** Herramienta de línea de comandos para interactuar con AWS.
 
-### Requisitos Previos
+**Instalación:**
 
-1. **Terraform >= 1.0** instalado
-2. **AWS CLI** configurado (`aws configure`)
-3. **Permisos IAM** en AWS para crear recursos (VPC, EC2, ALB, etc.)
+**Windows:**
+```powershell
+# Descargar MSI desde: https://aws.amazon.com/cli/
+# O usar: winget install Amazon.AWSCLI
+```
 
-### Despliegue Básico
+**Linux/Mac:**
+```bash
+# Linux
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+
+# Mac
+brew install awscli
+```
+
+**Configuración:**
+```bash
+aws configure
+# Te pedirá:
+# - AWS Access Key ID: [tu clave de acceso]
+# - AWS Secret Access Key: [tu clave secreta]
+# - Default region: us-east-1 (o la región que prefieras)
+# - Default output format: json
+```
+
+**Verificar configuración:**
+```bash
+aws sts get-caller-identity
+# Debe mostrar tu información de cuenta AWS
+```
+
+### 3. Permisos IAM en AWS
+
+Tu usuario de AWS necesita permisos para crear y gestionar:
+- VPC (redes virtuales)
+- EC2 (servidores)
+- ALB (balanceadores de carga)
+- IAM (roles y políticas)
+- Secrets Manager (gestión de secretos)
+- CloudWatch (monitoreo)
+- S3 y DynamoDB (si usas backend remoto)
+
+**Permisos recomendados**: `AdministratorAccess` (para desarrollo) o una política personalizada con los permisos específicos.
+
+### 4. PowerShell (para scripts de gestión)
+
+**Windows**: Ya viene instalado
+**Linux/Mac**: Instalar PowerShell Core desde: https://github.com/PowerShell/PowerShell
+
+---
+
+## 🚀 Guía de Inicio Rápido
+
+### Paso 1: Clonar o Navegar al Proyecto
 
 ```bash
-# 1. Navegar al ambiente deseado
-cd infra/envs/dev  # o qa, prod
+# Si tienes el proyecto en Git
+git clone <url-del-repositorio>
+cd genius
 
-# 2. Inicializar Terraform
+# O simplemente navega a la carpeta del proyecto
+cd c:\Users\tu-usuario\genius
+```
+
+### Paso 2: Configurar el Ambiente
+
+Elige el ambiente que quieres desplegar (dev, qa, o prod) y navega a su carpeta:
+
+```bash
+cd infra/envs/dev  # Para desarrollo
+# o
+cd infra/envs/qa    # Para QA
+# o
+cd infra/envs/prod  # Para producción
+```
+
+### Paso 3: Revisar y Personalizar la Configuración
+
+Abre el archivo `terraform.tfvars` en un editor de texto. Este archivo contiene toda la configuración de tu infraestructura.
+
+**Configuración mínima necesaria:**
+- `project_name`: Nombre del proyecto (por defecto: "genius")
+- `environment`: Ambiente (dev, qa, prod)
+- `aws_region`: Región de AWS (por defecto: us-east-1)
+
+**Ejemplo de `terraform.tfvars` básico:**
+```hcl
+project_name = "genius"
+environment  = "dev"
+aws_region   = "us-east-1"
+```
+
+### Paso 4: Inicializar Terraform
+
+Este comando descarga los módulos y proveedores necesarios:
+
+```bash
 terraform init
-
-# 3. Ver el plan de despliegue
-terraform plan
-
-# 4. Aplicar la configuración
-terraform apply
-
-# 5. Ver outputs (DNS del ALB, etc.)
-terraform output
-
-# Ver output específico
-terraform output alb_dns_name
 ```
 
-### Backend Remoto (Opcional pero Recomendado)
+**Salida esperada:**
+```
+Initializing the backend...
+Initializing provider plugins...
+- Finding hashicorp/aws versions matching "~> 5.0"...
+- Installing hashicorp/aws v5.x.x...
+Terraform has been successfully initialized!
+```
 
-Para usar estado remoto compartido (S3 + DynamoDB):
+### Paso 5: Ver el Plan de Despliegue
+
+Antes de crear recursos, Terraform te muestra qué va a hacer:
 
 ```bash
-# 1. Crear backend (solo primera vez)
-cd infra/backend-setup
-terraform init && terraform apply
-
-# 2. Migrar estado del ambiente
-cd ../envs/dev
-terraform init -migrate-state
+terraform plan
 ```
 
-## Configuración por Ambiente
+**¿Qué muestra?**
+- ✅ Recursos que se van a crear (en verde con `+`)
+- 🔄 Recursos que se van a modificar (en amarillo con `~`)
+- ❌ Recursos que se van a eliminar (en rojo con `-`)
 
-| Ambiente | Instancias (min/desired/max) | Instance Type | HTTPS | Deletion Protection |
-|----------|------------------------------|---------------|-------|---------------------|
-| **dev** | 2/2/5 | t3.micro | ❌ | ❌ |
-| **qa** | 2/2/5 | t3.micro | ❌ | ❌ |
-| **prod** | 2/2/5 | t3.micro | ❌ | ✅ |
+**Revisa cuidadosamente** la salida para asegurarte de que es lo que esperas.
 
-### Configuración de Red
+### Paso 6: Aplicar la Configuración
 
-**Dev:**
-- VPC: `10.0.0.0/16`
-- Subredes públicas: `10.0.1.0/24`, `10.0.2.0/24`
-- Subredes privadas: `10.0.10.0/24`, `10.0.20.0/24`
+Si el plan se ve bien, aplica los cambios:
 
-**QA:**
-- VPC: `10.1.0.0/16`
-- Subredes: `10.1.1.0/24`, `10.1.2.0/24` (públicas) | `10.1.10.0/24`, `10.1.20.0/24` (privadas)
-
-**Prod:**
-- VPC: `10.2.0.0/16`
-- Subredes: `10.2.1.0/24`, `10.2.2.0/24` (públicas) | `10.2.10.0/24`, `10.2.20.0/24` (privadas)
-
-**Nota**: Todos los ambientes están configurados con la misma capacidad de Auto Scaling (min=2, desired=2, max=5) y tipo de instancia (t3.micro) para facilitar la paridad entre ambientes.
-
-Edita `infra/envs/{ambiente}/terraform.tfvars` para personalizar.
-
-## Módulos Terraform
-
-### 1. VPC (`modules/vpc/`)
-Crea VPC con 2 subredes públicas y 2 privadas, Internet Gateway, 2 NAT Gateways (uno por AZ), y tablas de ruteo.
-
-**Outputs principales**: `vpc_id`, `public_subnet_ids`, `private_subnet_ids`
-
-### 2. Security Groups (`modules/security_groups/`)
-- **alb-sg**: Permite tráfico HTTP/HTTPS (80/443) desde Internet
-- **app-sg**: Permite tráfico solo desde alb-sg (principio de mínimo acceso)
-- **db-sg**: Para futuras bases de datos (solo desde app-sg)
-- **redis-sg**, **bastion-sg**: Opcionales
-
-### 3. ALB (`modules/alb/`)
-Application Load Balancer con Target Group y Listeners (HTTP obligatorio, HTTPS opcional).
-
-**Outputs principales**: `alb_dns_name`, `target_group_arn`, `alb_arn`
-
-### 4. Autoscaling (`modules/autoscaling/`)
-Auto Scaling Group con Launch Template. Las instancias:
-- Se despliegan en subredes privadas (sin IP público)
-- Usan Amazon Linux 2 (selección automática si no se especifica AMI)
-- Acceso remoto vía **AWS Systems Manager Session Manager** (no SSH)
-- IAM Role con permisos para SSM Session Manager y Secrets Manager
-- Ejecutan `user_data.sh` al iniciar (instala Docker, AWS CLI, descarga secretos, despliega app)
-- Configuración por defecto: min=2, desired=2, max=5 (igual para todos los ambientes)
-
-**Outputs principales**: `autoscaling_group_name`
-
-### 5. Secrets Manager (`modules/secrets-manager/`)
-Gestiona secretos de forma segura:
-- **Secreto de BD**: Credenciales de base de datos (username, password, host, port, database, engine)
-- **Secreto de API Keys**: Múltiples API keys en un solo secreto (formato mapa clave-valor)
-- **Secretos genéricos**: Secretos personalizados con contenido JSON arbitrario
-
-Los secretos se descargan automáticamente en `/opt/app/secrets/` al iniciar las instancias en formato JSON y archivos `.env` para variables de entorno.
-
-**Habilitar**: Edita `infra/envs/{ambiente}/terraform.tfvars` y configura `create_db_secret = true`, `create_api_keys_secret = true`, etc. (ver sección de Configuración Avanzada)
-
-**Scripts de gestión**:
-- `infra/verificar-secretos.ps1`: Verifica el estado de los secretos configurados
-- `infra/visualizar-secretos.ps1`: Visualiza el contenido de los secretos (con valores parcialmente ocultos)
-
-### 6. CloudWatch (`modules/cloudwatch/`)
-Dashboard y alarmas para:
-- Hosts no saludables
-- Errores HTTP 5xx
-- CPU alto (>80%)
-
-**Outputs principales**: `dashboard_url`, ARNs de alarmas
-
-### 7. Backend Setup (`backend-setup/`)
-Crea bucket S3 y tabla DynamoDB para estado remoto de Terraform. **Ejecutar solo una vez**.
-
-## Scripts de Gestión
-
-El proyecto incluye scripts PowerShell para facilitar la gestión de la infraestructura:
-
-### Secrets Manager
-
-- **`infra/verificar-secretos.ps1`**: Verifica el estado de los secretos configurados en Terraform y en AWS Secrets Manager
-- **`infra/visualizar-secretos.ps1`**: Visualiza el contenido de los secretos (con valores sensibles parcialmente ocultos) y proporciona URLs directas a la consola de AWS
-
-Uso:
-```powershell
-cd infra
-.\verificar-secretos.ps1    # Verificar estado
-.\visualizar-secretos.ps1   # Ver contenido
+```bash
+terraform apply
 ```
 
-### CloudWatch
+Terraform te pedirá confirmación. Escribe `yes` y presiona Enter.
 
-- **`infra/test-metrics.ps1`**: Script para probar métricas y alarmas de CloudWatch (saturar CPU, verificar alarmas, etc.)
+**⏱️ Tiempo estimado**: 10-15 minutos para crear toda la infraestructura.
 
-Uso:
-```powershell
-cd infra
-.\test-metrics.ps1
+**¿Qué está pasando?**
+1. Terraform crea la VPC y las subredes
+2. Crea los Security Groups (firewalls)
+3. Crea el Application Load Balancer
+4. Crea el Auto Scaling Group
+5. Lanza las instancias EC2
+6. Configura CloudWatch y alarmas
+7. (Opcional) Crea secretos en Secrets Manager
+
+### Paso 7: Ver los Resultados
+
+Una vez completado, verás los outputs:
+
+```bash
+terraform output
 ```
 
-## Configuración Avanzada
+**Outputs importantes:**
+- `alb_dns_name`: URL del balanceador de carga (ej: `genius-dev-alb-123456.us-east-1.elb.amazonaws.com`)
+- `cloudwatch_dashboard_url`: URL del dashboard de monitoreo
+- `all_secret_arns`: Lista de secretos creados (si los configuraste)
 
-### Habilitar HTTPS
+**🎉 ¡Listo!** Tu infraestructura está desplegada. Puedes acceder a tu aplicación usando la URL del ALB.
 
-En `infra/envs/{ambiente}/terraform.tfvars`:
+---
+
+## 🌍 Configuración por Ambiente
+
+El proyecto soporta múltiples ambientes (desarrollo, QA, producción) con configuraciones independientes.
+
+### Comparación de Ambientes
+
+| Característica | Dev | QA | Prod |
+|----------------|-----|-----|------|
+| **Instancias** | 2/2/5 | 2/2/5 | 2/2/5 |
+| **Tipo de Instancia** | t3.micro | t3.micro | t3.micro |
+| **HTTPS** | ❌ No | ❌ No | ✅ Sí (requiere certificado) |
+| **Protección de Eliminación** | ❌ No | ❌ No | ✅ Sí |
+| **VPC CIDR** | 10.0.0.0/16 | 10.1.0.0/16 | 10.2.0.0/16 |
+| **Recovery Window (Secretos)** | 7 días | 7 días | 30 días |
+
+### Configuración de Red por Ambiente
+
+Cada ambiente tiene su propia VPC (red virtual) aislada:
+
+**🔵 Desarrollo (Dev):**
+```
+VPC: 10.0.0.0/16
+├── Subredes Públicas:  10.0.1.0/24, 10.0.2.0/24
+└── Subredes Privadas:  10.0.10.0/24, 10.0.20.0/24
+```
+
+**🟡 QA:**
+```
+VPC: 10.1.0.0/16
+├── Subredes Públicas:  10.1.1.0/24, 10.1.2.0/24
+└── Subredes Privadas:  10.1.10.0/24, 10.1.20.0/24
+```
+
+**🔴 Producción (Prod):**
+```
+VPC: 10.2.0.0/16
+├── Subredes Públicas:  10.2.1.0/24, 10.2.2.0/24
+└── Subredes Privadas:  10.2.10.0/24, 10.2.20.0/24
+```
+
+**¿Por qué diferentes rangos de IP?** Para evitar conflictos si necesitas conectar las VPCs en el futuro.
+
+### Personalizar un Ambiente
+
+Edita el archivo `infra/envs/{ambiente}/terraform.tfvars`:
 
 ```hcl
-enable_https = true
-certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxx"
+# Ejemplo: Cambiar el número de instancias en dev
+min_size         = 1  # Mínimo 1 servidor
+desired_capacity = 2  # Deseado 2 servidores
+max_size         = 3  # Máximo 3 servidores
+
+# Cambiar el tipo de instancia
+instance_type = "t3.small"  # Más potente que t3.micro
 ```
 
-### Configurar Secrets Manager
+---
 
-En `infra/envs/{ambiente}/terraform.tfvars`:
+## 🧩 Módulos Terraform Detallados
 
-```hcl
-# Secreto de BD
-create_db_secret = true
-db_username      = "myapp_user"
-db_password      = "password123"  # ⚠️ Valor sensible
-db_host          = "mydb.example.com"
-db_port          = 3306
-db_name          = "myapp_db"
-db_engine        = "mysql"
+### 1. 🌐 Módulo VPC (`modules/vpc/`)
 
-# API Keys
-create_api_keys_secret = true
-api_keys = {
-  stripe_api_key   = "sk_live_xxxxx"  # ⚠️ Valores sensibles
-  sendgrid_api_key = "SG.xxxxx"
-  openai_api_key   = "sk-xxxxx"
+**¿Qué hace?** Crea la red virtual donde vivirán todos tus recursos.
+
+**Recursos que crea:**
+- ✅ **VPC**: Red virtual aislada
+- ✅ **Internet Gateway**: Permite acceso a Internet desde subredes públicas
+- ✅ **2 Subredes Públicas**: Para recursos que necesitan IP pública (ALB)
+- ✅ **2 Subredes Privadas**: Para servidores sin IP pública
+- ✅ **2 NAT Gateways**: Permiten a servidores privados acceder a Internet
+- ✅ **Tablas de Ruteo**: Definen cómo se enruta el tráfico
+
+**Outputs:**
+- `vpc_id`: ID de la VPC creada
+- `public_subnet_ids`: IDs de las subredes públicas
+- `private_subnet_ids`: IDs de las subredes privadas
+
+**¿Por qué 2 NAT Gateways?** Uno por zona de disponibilidad para alta disponibilidad.
+
+---
+
+### 2. 🔒 Módulo Security Groups (`modules/security_groups/`)
+
+**¿Qué hace?** Crea reglas de firewall que controlan el tráfico de red.
+
+**Security Groups creados:**
+
+| Security Group | Permite Tráfico Desde | Puertos | Uso |
+|----------------|----------------------|---------|-----|
+| **alb-sg** | Internet (0.0.0.0/0) | 80, 443 | Application Load Balancer |
+| **app-sg** | Solo desde alb-sg | 8080 | Servidores de aplicación |
+| **db-sg** | Solo desde app-sg | 3306 | Base de datos (futuro) |
+| **redis-sg** | Solo desde app-sg | 6379 | Redis/Cache (opcional) |
+| **bastion-sg** | IPs específicas | 22 | Servidor bastión (opcional) |
+
+**Principio de Seguridad**: Cada Security Group solo permite el tráfico mínimo necesario (principio de mínimo privilegio).
+
+---
+
+### 3. ⚖️ Módulo ALB (`modules/alb/`)
+
+**¿Qué hace?** Crea un balanceador de carga que distribuye el tráfico entre múltiples servidores.
+
+**Características:**
+- ✅ **Distribución de carga**: Divide el tráfico entre servidores disponibles
+- ✅ **Health Checks**: Verifica que los servidores estén funcionando
+- ✅ **HTTPS opcional**: Soporta certificados SSL/TLS
+- ✅ **Multi-AZ**: Distribuido en múltiples zonas de disponibilidad
+
+**Outputs:**
+- `alb_dns_name`: URL del balanceador (ej: `genius-dev-alb-123456.us-east-1.elb.amazonaws.com`)
+- `target_group_arn`: ARN del grupo de destinos
+- `alb_arn`: ARN del balanceador
+
+**¿Cómo funciona?**
+1. Usuario accede a la URL del ALB
+2. ALB verifica qué servidores están saludables
+3. ALB envía la petición a uno de los servidores saludables
+4. El servidor responde y el ALB devuelve la respuesta al usuario
+
+---
+
+### 4. 📈 Módulo Autoscaling (`modules/autoscaling/`)
+
+**¿Qué hace?** Crea un grupo de servidores que se ajusta automáticamente según la demanda.
+
+**Componentes:**
+
+**Auto Scaling Group:**
+- **Min Size**: Número mínimo de servidores (por defecto: 2)
+- **Desired Capacity**: Número deseado de servidores (por defecto: 2)
+- **Max Size**: Número máximo de servidores (por defecto: 5)
+
+**Launch Template:**
+- Define la configuración de los servidores (tipo, AMI, scripts de inicio, etc.)
+
+**Instancias EC2:**
+- Se despliegan en subredes privadas (sin IP pública)
+- Ejecutan `user_data.sh` al iniciar
+- Tienen acceso a Secrets Manager para descargar secretos
+- Acceso remoto vía SSM Session Manager
+
+**¿Qué hace `user_data.sh`?**
+1. Actualiza el sistema
+2. Instala AWS CLI
+3. Instala Docker
+4. Instala CloudWatch Agent
+5. Descarga secretos de Secrets Manager
+6. (Opcional) Despliega la aplicación
+
+**Outputs:**
+- `autoscaling_group_name`: Nombre del grupo de auto scaling
+
+---
+
+### 5. 🔐 Módulo Secrets Manager (`modules/secrets-manager/`)
+
+**¿Qué hace?** Gestiona secretos de forma segura (contraseñas, API keys, etc.) sin almacenarlos en código.
+
+**Tipos de secretos soportados:**
+
+#### 5.1. Secreto de Base de Datos
+
+Almacena credenciales de conexión a base de datos:
+
+```json
+{
+  "username": "myapp_user",
+  "password": "SuperSecurePassword123!",
+  "host": "mydb.example.com",
+  "port": 3306,
+  "database": "myapp_db",
+  "engine": "mysql"
 }
+```
 
-# Secretos Genéricos
+#### 5.2. Secreto de API Keys
+
+Almacena múltiples API keys en un solo secreto:
+
+```json
+{
+  "stripe_api_key": "sk_live_xxxxx",
+  "sendgrid_api_key": "SG.xxxxx",
+  "openai_api_key": "sk-xxxxx"
+}
+```
+
+#### 5.3. Secretos Genéricos
+
+Secretos personalizados con contenido JSON arbitrario:
+
+```json
+{
+  "secret": "my-jwt-secret-key",
+  "algorithm": "HS256"
+}
+```
+
+**¿Dónde se almacenan los secretos?**
+- En las instancias EC2: `/opt/app/secrets/`
+- Formato: Archivos JSON y `.env` para variables de entorno
+
+**Seguridad:**
+- ✅ Cifrados en reposo (AWS KMS)
+- ✅ Cifrados en tránsito (HTTPS)
+- ✅ Control de acceso mediante IAM
+- ✅ Historial de versiones
+- ✅ Rotación automática (opcional)
+
+**Outputs:**
+- `db_secret_arn`: ARN del secreto de BD
+- `api_keys_secret_arn`: ARN del secreto de API keys
+- `all_secret_arns`: Lista de todos los ARNs de secretos
+
+---
+
+### 6. 📊 Módulo CloudWatch (`modules/cloudwatch/`)
+
+**¿Qué hace?** Proporciona monitoreo y alertas para tu infraestructura.
+
+**Componentes:**
+
+#### Dashboard de CloudWatch
+
+Visualización en tiempo real de métricas clave:
+- 📈 **CPU Usage**: Uso de CPU de los servidores
+- 📊 **Gráficos interactivos**: Puedes hacer zoom, cambiar períodos, etc.
+
+#### Alarmas
+
+Notificaciones automáticas cuando algo va mal:
+
+| Alarma | Se Activa Cuando | Acción Recomendada |
+|--------|------------------|-------------------|
+| **high-cpu** | CPU > 80% por 1 minuto | Revisar carga o escalar |
+| **unhealthy-hosts** | Hosts no saludables | Revisar health checks |
+| **http-5xx-errors** | Errores HTTP 5xx | Revisar logs de aplicación |
+
+**Outputs:**
+- `dashboard_url`: URL del dashboard de CloudWatch
+- `high_cpu_alarm_arn`: ARN de la alarma de CPU alta
+
+**¿Cómo ver el dashboard?**
+1. Ejecuta `terraform output cloudwatch_dashboard_url`
+2. Abre la URL en tu navegador
+3. O usa el script: `.\test-metrics.ps1` y selecciona la opción para abrir el dashboard
+
+---
+
+### 7. 💾 Módulo Backend Setup (`backend-setup/`)
+
+**¿Qué hace?** Crea el almacenamiento remoto para el estado de Terraform.
+
+**¿Por qué es importante?**
+- Permite que múltiples personas trabajen en el mismo proyecto
+- Evita perder el estado si se borra el archivo local
+- Habilita bloqueo de estado (evita conflictos)
+
+**Recursos que crea:**
+- ✅ **Bucket S3**: Almacena el archivo de estado
+- ✅ **Tabla DynamoDB**: Maneja el bloqueo de estado
+
+**⚠️ IMPORTANTE**: Este módulo solo se ejecuta **una vez** para crear el backend. Después, cada ambiente usa este backend.
+
+**Uso:**
+```bash
+cd infra/backend-setup
+terraform init
+terraform apply
+```
+
+---
+
+## 🔐 Gestión de Secretos
+
+### ¿Por qué usar Secrets Manager?
+
+**Problema tradicional:**
+```bash
+# ❌ MAL: Contraseñas en código
+DB_PASSWORD="SuperSecret123"  # Expuesto en Git
+```
+
+**Solución con Secrets Manager:**
+```bash
+# ✅ BIEN: Contraseñas en AWS Secrets Manager
+aws secretsmanager get-secret-value --secret-id genius/dev/database/credentials
+# Solo accesible por recursos autorizados
+```
+
+### Configurar Secretos
+
+Edita `infra/envs/{ambiente}/terraform.tfvars`:
+
+#### Ejemplo 1: Secreto de Base de Datos
+
+```hcl
+# Habilitar secreto de BD
+create_db_secret = true
+
+# Credenciales (⚠️ Valores sensibles)
+db_username = "genius_user"
+db_password = "GeniusSecurePass2024!"  # Cambia esto por tu contraseña real
+db_host     = "genius-db.example.com"   # Cambia esto por tu host real
+db_port     = 3306
+db_name     = "genius_db"                # Cambia esto por tu nombre de BD
+db_engine   = "mysql"                    # mysql, postgres, mongodb, etc.
+```
+
+#### Ejemplo 2: Secreto de API Keys
+
+```hcl
+# Habilitar secreto de API Keys
+create_api_keys_secret = true
+
+# API Keys (⚠️ Valores sensibles)
+api_keys = {
+  stripe_api_key   = "sk_live_xxxxxxxxxxxxx"      # Tu clave real de Stripe
+  sendgrid_api_key = "SG.xxxxxxxxxxxxx"           # Tu clave real de SendGrid
+  openai_api_key   = "sk-xxxxxxxxxxxxx"           # Tu clave real de OpenAI
+}
+```
+
+#### Ejemplo 3: Secretos Genéricos
+
+```hcl
+# Secretos personalizados
 app_secrets = {
   jwt_secret = {
-    description   = "JWT signing secret"
-    secret_string = "{\"secret\":\"my-jwt-secret\",\"algorithm\":\"HS256\"}"
+    description   = "JWT signing secret para autenticacion"
+    # ⚠️ IMPORTANTE: Usar cadena JSON directa, NO jsonencode()
+    secret_string = "{\"secret\":\"my-jwt-secret-key\",\"algorithm\":\"HS256\"}"
   }
+  
   encryption_key = {
-    description   = "Clave de encriptacion"
-    secret_string = "{\"key\":\"my-encryption-key\"}"
+    description   = "Clave de encriptacion para datos sensibles"
+    secret_string = "{\"key\":\"my-encryption-key-32-chars\"}"
   }
 }
 ```
 
-**Nota**: Para secretos genéricos (`app_secrets`), el `secret_string` debe ser una cadena JSON válida (no usar `jsonencode()` en `.tfvars`).
-
-#### Scripts de Gestión de Secretos
-
-El proyecto incluye scripts PowerShell para gestionar secretos:
-
-**Verificar estado de secretos:**
-```powershell
-cd infra
-.\verificar-secretos.ps1
-```
-
-**Visualizar secretos:**
-```powershell
-cd infra
-.\visualizar-secretos.ps1
-```
-
-Estos scripts muestran:
-- Estado de los secretos configurados en Terraform
-- Contenido de los secretos (valores sensibles parcialmente ocultos)
-- URLs directas a la consola de AWS
-- Información de diagnóstico si hay problemas
-
-### Acceso Remoto a Instancias
-
-**Por defecto**: Las instancias usan **AWS Systems Manager Session Manager** (no SSH).
-
-Para conectarte a una instancia:
-1. Consola de AWS → EC2 → Instancias
-2. Selecciona la instancia → Conectar → Session Manager
-3. Se abre una terminal en el navegador
-
-**Nota**: SSH está deshabilitado por defecto. Para habilitarlo (no recomendado):
-
+**⚠️ ERROR COMÚN**: No uses `jsonencode()` en `.tfvars`:
 ```hcl
-enable_ssh = true
-allowed_ssh_cidrs = ["203.0.113.0/24"]  # Tu IP o rango
+# ❌ MAL
+secret_string = jsonencode({...})  # Error: Function calls not allowed
+
+# ✅ BIEN
+secret_string = "{\"key\":\"value\"}"  # Cadena JSON directa
 ```
 
-### Cambiar Puerto de Base de Datos
+### Aplicar Cambios
 
-```hcl
-db_port   = 5432  # Para PostgreSQL
-db_engine = "postgres"
-```
-
-## Recursos Creados
-
-Al ejecutar `terraform apply`, se crean aproximadamente:
-
-| Categoría | Cantidad |
-|-----------|----------|
-| **Recursos de Red** | 10 (VPC, IGW, subredes, NAT, rutas) |
-| **Security Groups** | 4-6 (4 obligatorios + 2 opcionales) |
-| **Load Balancer** | 3-4 (ALB + Target Group + 1-2 Listeners) |
-| **Auto Scaling** | 4 (Launch Template + ASG + 2 políticas) |
-| **Instancias EC2** | 2-5 (min=2, desired=2, max=5 por defecto) |
-| **CloudWatch** | 4 (3 alarmas + 1 dashboard) |
-| **Secrets Manager** | 0-2+N (opcional) |
-| **TOTAL** | **~26-52+ recursos** |
-
-## Costos Estimados
-
-**Desarrollo:**
-- ~$50-100/mes (2 instancias t3.micro, NAT Gateway, ALB)
-
-**Producción:**
-- ~$50-100/mes (configuración actual: 2 instancias t3.micro, NAT Gateway, ALB)
-- Costos aumentan con más instancias y tráfico
-
-**Costos principales:**
-- NAT Gateway: ~$0.045/hora + datos transferidos
-- ALB: ~$0.0225/hora + datos procesados
-- EC2: Variable según tipo (t3.micro ~$0.0104/hora)
-- Secrets Manager: $0.40/secreto/mes
-
-## Troubleshooting
-
-### Las instancias no reciben tráfico del ALB
-- Verificar que `app-sg` permite tráfico desde `alb-sg`
-- Verificar health checks del Target Group
-- Verificar que las instancias están registradas en el Target Group
-- Verificar que las instancias están en estado "healthy" en el Target Group
-
-### Las instancias no pueden acceder a Internet
-- Verificar que las subredes privadas tienen tablas de ruteo con NAT Gateway
-- Verificar estado del NAT Gateway (debe estar "Available")
-
-### Terraform destroy se demora mucho
-- Timeouts configurados para evitar bloqueos
-- Dependencias explícitas aseguran orden correcto de destrucción
-- Destroy optimizado: ~5-15 minutos (antes: ~20-30 minutos)
-
-### Error al leer secretos en las instancias
-- Verificar permisos IAM del rol de EC2 (debe tener acceso a Secrets Manager)
-- Verificar que los secretos existen en AWS Secrets Manager usando: `.\verificar-secretos.ps1`
-- Verificar que `create_db_secret = true` o `create_api_keys_secret = true` en terraform.tfvars
-- Conectarse a la instancia vía Session Manager y revisar logs: `sudo cat /var/log/user-data.log`
-- Verificar archivos en `/opt/app/secrets/`: `sudo ls -la /opt/app/secrets/`
-- Usar `.\visualizar-secretos.ps1` para ver el contenido de los secretos y URLs de la consola
-
-### Error: Function calls not allowed en terraform.tfvars
-- Las funciones de Terraform como `jsonencode()` no se pueden usar en archivos `.tfvars`
-- Para `app_secrets`, usar cadenas JSON directas: `secret_string = "{\"key\":\"value\"}"`
-- No usar: `secret_string = jsonencode({...})` ❌
-
-### No puedo conectarme a las instancias
-- Las instancias usan **SSM Session Manager** (no SSH)
-- Conectar desde: Consola AWS → EC2 → Instancias → Conectar → Session Manager
-- Verificar que el IAM Role tiene la política `AmazonSSMManagedInstanceCore`
-- Verificar que SSM Agent está corriendo: `sudo systemctl status amazon-ssm-agent`
-
-## Características Implementadas
-
-- ✅ **Modularidad**: Módulos reutilizables entre ambientes (dev, qa, prod)
-- ✅ **Seguridad**: Subredes privadas, Security Groups restrictivos, Secrets Manager, SSM Session Manager
-- ✅ **Alta Disponibilidad**: Multi-AZ, Auto Scaling (2-2-5 por defecto), Health Checks
-- ✅ **Monitoreo**: CloudWatch Dashboard y alarmas (CPU, errores, hosts no saludables)
-- ✅ **Gestión de Estado**: Backend remoto (S3 + DynamoDB) opcional
-- ✅ **Optimizaciones**: Timeouts y dependencias para destroy rápido (~5-15 minutos)
-- ✅ **Gestión de Secretos**: AWS Secrets Manager integrado (BD, API keys, secretos genéricos)
-
-## Comandos Útiles
-
-### Terraform
+Después de configurar los secretos:
 
 ```bash
-# Ver estado
-terraform show
+# 1. Ver qué se va a crear
+terraform plan
 
-# Ver outputs
-terraform output
-
-# Validar configuración
-terraform validate
-
-# Formatear código
-terraform fmt
-
-# Destruir infraestructura (¡cuidado!)
-terraform destroy
+# 2. Aplicar cambios
+terraform apply
 ```
 
-### Scripts de Gestión
+### Verificar Secretos
 
-**Scripts de Secrets Manager** (desde `infra/`):
+Usa los scripts incluidos:
 
 ```powershell
 # Verificar estado de secretos
+cd infra
 .\verificar-secretos.ps1
 
-# Visualizar secretos (muestra contenido)
+# Visualizar contenido de secretos
 .\visualizar-secretos.ps1
 ```
 
-**Scripts de CloudWatch** (desde `infra/`):
+### Acceder a Secretos desde las Instancias
+
+Los secretos se descargan automáticamente en `/opt/app/secrets/` cuando las instancias inician.
+
+**Estructura de archivos:**
+```
+/opt/app/secrets/
+├── genius-dev-database-credentials.json  # Secreto de BD en JSON
+├── db.env                                 # Variables de entorno para BD
+├── genius-dev-app-api-keys.json          # Secreto de API keys
+├── api-keys.env                           # Variables de entorno para API keys
+└── ...
+```
+
+**Ejemplo de uso en aplicación:**
+```bash
+# Leer secreto de BD
+cat /opt/app/secrets/genius-dev-database-credentials.json
+
+# O usar variables de entorno
+source /opt/app/secrets/db.env
+echo $DB_USERNAME
+echo $DB_PASSWORD
+```
+
+---
+
+## 📊 Monitoreo y Alarmas
+
+### Dashboard de CloudWatch
+
+El dashboard muestra métricas en tiempo real de tu infraestructura.
+
+**Acceder al dashboard:**
+```bash
+# Opción 1: Desde Terraform
+cd infra/envs/dev
+terraform output cloudwatch_dashboard_url
+
+# Opción 2: Desde el script
+cd infra
+.\test-metrics.ps1
+# Selecciona la opción para abrir el dashboard
+```
+
+**Métricas disponibles:**
+- 📈 **CPU Usage**: Uso de CPU promedio de todos los servidores
+- 📊 **Gráficos interactivos**: Puedes cambiar el período de tiempo, hacer zoom, etc.
+
+### Alarmas Configuradas
+
+| Alarma | Condición | Período | Acción |
+|--------|-----------|---------|--------|
+| **high-cpu** | CPU > 80% | 1 minuto | Revisar carga o escalar servidores |
+
+**Ver estado de alarmas:**
+```bash
+# Desde AWS CLI
+aws cloudwatch describe-alarms --alarm-names genius-dev-high-cpu
+
+# O desde el script
+cd infra
+.\test-metrics.ps1
+# Selecciona opción 3: Verificar estado de alarmas
+```
+
+### Probar Alarmas
+
+El script `test-metrics.ps1` incluye opciones para probar las alarmas:
 
 ```powershell
-# Probar métricas y alarmas de CloudWatch
+cd infra
 .\test-metrics.ps1
 ```
 
-## Información Adicional
+**Opciones disponibles:**
+1. **Saturar CPU**: Genera carga de CPU para activar la alarma
+2. **Verificar alarmas**: Muestra el estado actual de todas las alarmas
+3. **Diagnóstico de métricas**: Verifica por qué no aparecen métricas
+
+---
+
+## 🛠️ Scripts de Gestión
+
+El proyecto incluye scripts PowerShell para facilitar la gestión de la infraestructura.
+
+### Scripts de Secrets Manager
+
+#### `verificar-secretos.ps1`
+
+**¿Qué hace?** Verifica el estado de los secretos configurados.
+
+**Uso:**
+```powershell
+cd infra
+.\verificar-secretos.ps1
+```
+
+**Muestra:**
+- ✅ Si los secretos están configurados en Terraform
+- ✅ Si los secretos existen en AWS Secrets Manager
+- ✅ Estado de cada secreto (ACTIVO, ELIMINADO)
+- ✅ Información de diagnóstico si hay problemas
+
+**Ejemplo de salida:**
+```
+========================================
+  Verificacion de Secretos AWS
+  Secrets Manager
+========================================
+
+Region: us-east-1
+
+PASO 1: Obteniendo informacion de Terraform...
+OK Prefijo de secretos: genius/dev
+
+OK Se encontraron 4 secretos configurados
+
+PASO 2: Verificando secretos en AWS Secrets Manager...
+  [OK] Secreto existe
+  Nombre: genius/dev/database/credentials
+  Estado: ACTIVO
+  Versiones: 1
+```
+
+#### `visualizar-secretos.ps1`
+
+**¿Qué hace?** Visualiza el contenido de los secretos (con valores sensibles parcialmente ocultos).
+
+**Uso:**
+```powershell
+cd infra
+.\visualizar-secretos.ps1
+```
+
+**Muestra:**
+- 📄 Contenido de cada secreto
+- 🔒 Valores sensibles parcialmente ocultos (ej: `pass****word`)
+- 🔗 URLs directas a la consola de AWS
+- 📊 Información detallada de cada secreto
+
+**Ejemplo de salida:**
+```
+========================================
+SECRETO 1 de 4
+========================================
+
+ARN: arn:aws:secretsmanager:us-east-1:123456789012:secret:genius/dev/database/credentials
+Nombre: genius/dev/database/credentials
+
+[CONTENIDO DEL SECRETO (JSON)]:
+========================================
+  username : genius_user
+  password : Geni****2024!
+  host : genius-db.example.com
+  port : 3306
+  database : genius_db
+  engine : mysql
+
+[URL EN LA CONSOLA DE AWS]:
+  https://console.aws.amazon.com/secretsmanager/...
+```
+
+### Scripts de CloudWatch
+
+#### `test-metrics.ps1`
+
+**¿Qué hace?** Permite probar métricas y alarmas de CloudWatch.
+
+**Uso:**
+```powershell
+cd infra
+.\test-metrics.ps1
+```
+
+**Opciones del menú:**
+1. **Saturar CPU**: Genera carga de CPU para activar la alarma
+2. **Verificar alarmas**: Muestra el estado de todas las alarmas
+3. **Diagnóstico de métricas**: Verifica por qué no aparecen métricas
+
+**Ejemplo de uso:**
+```
+========================================
+  Prueba de Metricas CloudWatch
+  Dashboard: genius-dev-application-status
+========================================
+
+ACTIVAR ALARMAS (Pruebas de Fallo):
+  1. Widget 1: CPU Usage [high-cpu]
+     - Activa cuando CPUUtilization > 80% durante 1 minuto
+
+VERIFICACION:
+  3. Verificar estado de todas las alarmas
+  7. Verificar metricas de CPU en CloudWatch (diagnostico)
+
+Selecciona una opcion (1-7): 1
+```
+
+---
+
+## ⚙️ Configuración Avanzada
+
+### Habilitar HTTPS
+
+Para habilitar HTTPS, necesitas un certificado SSL/TLS en AWS Certificate Manager (ACM).
+
+**Paso 1: Crear certificado en ACM**
+1. Ve a AWS Console → Certificate Manager
+2. Solicita un certificado público
+3. Valida el dominio
+4. Copia el ARN del certificado
+
+**Paso 2: Configurar en Terraform**
+
+Edita `infra/envs/{ambiente}/terraform.tfvars`:
+
+```hcl
+enable_https = true
+certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxx-xxxxx-xxxxx"
+```
+
+**Paso 3: Aplicar cambios**
+```bash
+terraform plan
+terraform apply
+```
+
+**Resultado**: El ALB ahora acepta tráfico HTTPS en el puerto 443 y redirige HTTP a HTTPS automáticamente.
+
+---
+
+### Acceso Remoto a Instancias
+
+**Método recomendado: AWS Systems Manager Session Manager**
+
+**Ventajas:**
+- ✅ No requiere claves SSH
+- ✅ No requiere IPs públicas
+- ✅ Acceso seguro desde la consola de AWS
+- ✅ Logs de sesión en CloudTrail
+- ✅ No requiere abrir puertos en Security Groups
+
+**Cómo conectarse:**
+
+1. **Desde la Consola de AWS:**
+   - Ve a EC2 → Instancias
+   - Selecciona la instancia
+   - Click en "Conectar"
+   - Selecciona "Session Manager"
+   - Click en "Conectar"
+   - Se abre una terminal en el navegador
+
+2. **Desde AWS CLI:**
+   ```bash
+   aws ssm start-session --target i-1234567890abcdef0
+   ```
+
+**Habilitar SSH (no recomendado):**
+
+Si realmente necesitas SSH, edita `terraform.tfvars`:
+
+```hcl
+enable_ssh = true
+allowed_ssh_cidrs = ["203.0.113.0/24"]  # Tu IP o rango de IPs
+```
+
+**⚠️ Advertencia**: Habilitar SSH expone tus servidores a ataques. Session Manager es más seguro.
+
+---
+
+### Cambiar Configuración de Base de Datos
+
+Para cambiar el puerto o motor de base de datos:
+
+```hcl
+# Para PostgreSQL
+db_port   = 5432
+db_engine = "postgres"
+
+# Para MongoDB
+db_port   = 27017
+db_engine = "mongodb"
+
+# Para MySQL (por defecto)
+db_port   = 3306
+db_engine = "mysql"
+```
+
+---
+
+### Ajustar Auto Scaling
+
+Para cambiar el número de servidores:
+
+```hcl
+min_size         = 1   # Mínimo 1 servidor
+desired_capacity = 3   # Deseado 3 servidores
+max_size         = 10  # Máximo 10 servidores
+```
+
+**Consideraciones:**
+- Más servidores = Mayor costo
+- Más servidores = Mayor disponibilidad
+- El Auto Scaling ajusta automáticamente según la carga (si configuras políticas de escalado)
+
+---
+
+## 💰 Costos Estimados
+
+### Desglose de Costos Mensuales
+
+**Configuración por defecto (2 instancias t3.micro):**
+
+| Recurso | Costo Mensual | Descripción |
+|---------|---------------|-------------|
+| **NAT Gateway** | ~$32 | $0.045/hora × 2 gateways × 730 horas |
+| **Application Load Balancer** | ~$16 | $0.0225/hora × 730 horas |
+| **EC2 Instances (t3.micro)** | ~$15 | $0.0104/hora × 2 instancias × 730 horas |
+| **Secrets Manager** | ~$1.60 | $0.40/secreto × 4 secretos |
+| **CloudWatch** | ~$5 | Métricas y logs (primeros 10GB gratis) |
+| **Transferencia de Datos** | Variable | Depende del tráfico |
+| **TOTAL ESTIMADO** | **~$70-100/mes** | Sin incluir transferencia de datos |
+
+### Optimización de Costos
+
+**Para desarrollo:**
+- Usar 1 instancia en lugar de 2: Ahorro ~$7.50/mes
+- Usar 1 NAT Gateway: Ahorro ~$32/mes (menos disponibilidad)
+- Deshabilitar secretos no usados: Ahorro ~$0.40/secreto/mes
+
+**Para producción:**
+- Considerar instancias reservadas: Hasta 75% de descuento
+- Usar Auto Scaling policies: Escalar solo cuando sea necesario
+- Monitorear costos con AWS Cost Explorer
+
+### Free Tier
+
+Algunos recursos son elegibles para Free Tier de AWS (primeros 12 meses):
+- ✅ EC2 t3.micro: 750 horas/mes gratis
+- ✅ Secrets Manager: Primeros secretos pueden tener descuentos
+- ⚠️ NAT Gateway: NO está en Free Tier
+- ⚠️ ALB: NO está en Free Tier
+
+---
+
+## 🔧 Solución de Problemas
+
+### Problema: Las instancias no reciben tráfico del ALB
+
+**Síntomas:**
+- El ALB muestra que los servidores están "unhealthy"
+- No puedes acceder a la aplicación desde la URL del ALB
+
+**Soluciones:**
+
+1. **Verificar Security Groups:**
+   ```bash
+   # Verificar que app-sg permite tráfico desde alb-sg
+   aws ec2 describe-security-groups --group-names genius-dev-app-sg
+   ```
+
+2. **Verificar Health Checks:**
+   - Ve a EC2 → Target Groups
+   - Selecciona el target group
+   - Revisa la pestaña "Health checks"
+   - Verifica que la ruta de health check sea correcta (por defecto: `/`)
+
+3. **Conectarse a una instancia y verificar:**
+   ```bash
+   # Conectar vía Session Manager
+   aws ssm start-session --target i-xxxxx
+   
+   # Verificar que la aplicación está corriendo
+   sudo systemctl status docker
+   docker ps
+   
+   # Verificar logs
+   sudo cat /var/log/user-data.log
+   ```
+
+---
+
+### Problema: Las instancias no pueden acceder a Internet
+
+**Síntomas:**
+- Las instancias no pueden descargar actualizaciones
+- No pueden acceder a Secrets Manager
+- No pueden hacer llamadas a APIs externas
+
+**Soluciones:**
+
+1. **Verificar NAT Gateway:**
+   ```bash
+   aws ec2 describe-nat-gateways --filter "Name=state,Values=available"
+   ```
+   Debe mostrar al menos un NAT Gateway en estado "available"
+
+2. **Verificar Tablas de Ruteo:**
+   - Ve a VPC → Route Tables
+   - Selecciona la tabla de ruteo de las subredes privadas
+   - Verifica que hay una ruta a `0.0.0.0/0` que apunta al NAT Gateway
+
+3. **Verificar desde la instancia:**
+   ```bash
+   # Conectar vía Session Manager
+   aws ssm start-session --target i-xxxxx
+   
+   # Probar conectividad
+   curl https://www.google.com
+   ```
+
+---
+
+### Problema: Error al leer secretos en las instancias
+
+**Síntomas:**
+- Los secretos no se descargan en `/opt/app/secrets/`
+- La aplicación no puede acceder a las credenciales
+
+**Soluciones:**
+
+1. **Verificar que los secretos existen:**
+   ```powershell
+   cd infra
+   .\verificar-secretos.ps1
+   ```
+
+2. **Verificar permisos IAM:**
+   ```bash
+   # Verificar que el rol de EC2 tiene permisos de Secrets Manager
+   aws iam get-role-policy --role-name genius-dev-ssm-role --policy-name genius-dev-secrets-manager-read
+   ```
+
+3. **Revisar logs de la instancia:**
+   ```bash
+   # Conectar vía Session Manager
+   aws ssm start-session --target i-xxxxx
+   
+   # Ver logs de user-data
+   sudo cat /var/log/user-data.log | grep -i secret
+   
+   # Verificar archivos de secretos
+   sudo ls -la /opt/app/secrets/
+   ```
+
+4. **Verificar configuración en terraform.tfvars:**
+   - Asegúrate de que `create_db_secret = true` o `create_api_keys_secret = true`
+   - Verifica que los valores no estén vacíos
+
+---
+
+### Problema: Error "Function calls not allowed" en terraform.tfvars
+
+**Síntoma:**
+```
+Error: Function calls not allowed
+  on terraform.tfvars line 90:
+  90:     secret_string = jsonencode({...})
+```
+
+**Causa:** Las funciones de Terraform como `jsonencode()` no se pueden usar en archivos `.tfvars`.
+
+**Solución:**
+
+❌ **INCORRECTO:**
+```hcl
+app_secrets = {
+  jwt_secret = {
+    secret_string = jsonencode({
+      secret = "my-jwt-secret"
+    })
+  }
+}
+```
+
+✅ **CORRECTO:**
+```hcl
+app_secrets = {
+  jwt_secret = {
+    secret_string = "{\"secret\":\"my-jwt-secret\"}"
+  }
+}
+```
+
+**Nota:** Usa cadenas JSON directas, escapando las comillas dobles con `\"`.
+
+---
+
+### Problema: No puedo conectarme a las instancias
+
+**Síntoma:** No puedes acceder a las instancias vía Session Manager.
+
+**Soluciones:**
+
+1. **Verificar que SSM Agent está corriendo:**
+   ```bash
+   # Desde la consola de AWS, conecta vía Session Manager
+   # Si no puedes, verifica desde otra instancia o usa AWS CLI
+   ```
+
+2. **Verificar IAM Role:**
+   ```bash
+   aws iam get-role --role-name genius-dev-ssm-role
+   # Debe tener la política AmazonSSMManagedInstanceCore
+   ```
+
+3. **Verificar desde la instancia (si tienes otro método de acceso):**
+   ```bash
+   sudo systemctl status amazon-ssm-agent
+   sudo systemctl start amazon-ssm-agent  # Si no está corriendo
+   ```
+
+---
+
+### Problema: Terraform destroy se demora mucho
+
+**Síntoma:** `terraform destroy` tarda más de 20 minutos.
+
+**Soluciones:**
+
+1. **Esperar**: Algunos recursos tienen períodos de espera configurados para evitar eliminaciones accidentales
+2. **Verificar dependencias**: Asegúrate de que no hay recursos bloqueados
+3. **Forzar destrucción (con cuidado):**
+   ```bash
+   terraform destroy -auto-approve
+   ```
+
+**Tiempo estimado:** 5-15 minutos (optimizado)
+
+---
+
+## 📚 Referencias y Recursos
+
+### Documentación Oficial
+
+- 📖 [Terraform Documentation](https://www.terraform.io/docs)
+- 📖 [AWS Provider for Terraform](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
+- 📖 [AWS Secrets Manager](https://docs.aws.amazon.com/secretsmanager/)
+- 📖 [AWS Systems Manager Session Manager](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html)
+- 📖 [AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)
+
+### Conceptos Importantes
+
+**Infraestructura como Código (IaC):**
+- Define infraestructura usando código en lugar de interfaces gráficas
+- Permite versionado, revisión de código y despliegues reproducibles
+
+**Terraform:**
+- Herramienta de HashiCorp para IaC
+- Usa lenguaje HCL (HashiCorp Configuration Language)
+- Soporta múltiples proveedores de cloud (AWS, Azure, GCP, etc.)
+
+**AWS VPC:**
+- Red virtual privada aislada en AWS
+- Similar a una red física pero virtualizada
+
+**Auto Scaling:**
+- Ajusta automáticamente el número de servidores según la demanda
+- Aumenta servidores cuando hay mucha carga
+- Reduce servidores cuando hay poca carga
+
+---
+
+## 🎓 Información Adicional
 
 ### Tags FinOps
 
-Todos los recursos incluyen tags para gestión de costos:
-- `Project`: genius
-- `Environment`: dev/qa/prod
-- `CostCenter`: engineering
-- `Owner`: platform-team
-- `Team`: platform-engineering
-- `ManagedBy`: terraform
+Todos los recursos incluyen tags para gestión de costos y organización:
 
-### Acceso a Instancias
+| Tag | Valor | Propósito |
+|-----|-------|-----------|
+| `Project` | genius | Identifica el proyecto |
+| `Environment` | dev/qa/prod | Identifica el ambiente |
+| `CostCenter` | engineering | Para asignación de costos |
+| `Owner` | platform-team | Equipo responsable |
+| `Team` | platform-engineering | Equipo que gestiona |
+| `ManagedBy` | terraform | Herramienta de gestión |
 
-**Método recomendado**: AWS Systems Manager Session Manager
-- No requiere claves SSH
-- No requiere IPs públicas
-- Acceso seguro desde la consola de AWS
-- Logs de sesión en CloudTrail
-
-### Configuración Actual
+### Configuración Actual por Defecto
 
 Todos los ambientes están configurados con:
+
 - **Auto Scaling**: min=2, desired=2, max=5
-- **Instance Type**: t3.micro (Free Tier elegible)
+- **Instance Type**: t3.micro (elegible para Free Tier)
 - **HTTPS**: Deshabilitado (habilitar en producción cuando se tenga certificado)
 - **Health Check Path**: `/` (configurable)
 - **Secrets Manager**: Deshabilitado por defecto (habilitar según necesidad)
 
-## Referencias
+### Mejores Prácticas Implementadas
 
-- [Documentación de Terraform](https://www.terraform.io/docs)
-- [AWS Provider para Terraform](https://registry.terraform.io/providers/hashicorp/aws/latest/docs)
-- [AWS Secrets Manager](https://docs.aws.amazon.com/secretsmanager/)
-- [AWS Systems Manager Session Manager](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager.html)
-- [AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)
+✅ **Seguridad:**
+- Instancias en subredes privadas
+- Security Groups con principio de mínimo privilegio
+- Secretos en Secrets Manager (no en código)
+- Acceso remoto vía SSM (no SSH)
+
+✅ **Alta Disponibilidad:**
+- Multi-AZ (múltiples zonas de disponibilidad)
+- Auto Scaling automático
+- Health checks continuos
+
+✅ **Monitoreo:**
+- Dashboard de CloudWatch
+- Alarmas automáticas
+- Métricas personalizadas
+
+✅ **Mantenibilidad:**
+- Código modular y reutilizable
+- Configuración por ambiente
+- Scripts de gestión automatizados
+
+---
+
+## 🤝 Contribuir
+
+Si encuentras errores o tienes sugerencias de mejora:
+
+1. Crea un issue en el repositorio
+2. O contacta al equipo de plataforma
+
+---
+
+## 📝 Licencia
+
+[Especificar licencia del proyecto]
+
+---
+
+## 👥 Autores
+
+- **Equipo de Plataforma** - Desarrollo y mantenimiento
+
+---
+
+**Última actualización**: Enero 2024
+
+**Versión**: 1.0.0
+
+---
+
+¡Gracias por usar Genius Project! 🚀
