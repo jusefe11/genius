@@ -10,6 +10,7 @@ Proyecto de infraestructura como código con Terraform para desplegar un sistema
 - [Configuración por Ambiente](#configuración-por-ambiente)
 - [Módulos Terraform](#módulos-terraform)
 - [Configuración Avanzada](#configuración-avanzada)
+- [Scripts de Gestión](#scripts-de-gestión)
 - [Costos Estimados](#costos-estimados)
 - [Troubleshooting](#troubleshooting)
 
@@ -198,13 +199,17 @@ Auto Scaling Group con Launch Template. Las instancias:
 
 ### 5. Secrets Manager (`modules/secrets-manager/`)
 Gestiona secretos de forma segura:
-- **Secreto de BD**: Credenciales de base de datos (username, password, host, port, etc.)
-- **Secreto de API Keys**: Múltiples API keys en un solo secreto
-- **Secretos genéricos**: Secretos personalizados con contenido arbitrario
+- **Secreto de BD**: Credenciales de base de datos (username, password, host, port, database, engine)
+- **Secreto de API Keys**: Múltiples API keys en un solo secreto (formato mapa clave-valor)
+- **Secretos genéricos**: Secretos personalizados con contenido JSON arbitrario
 
 Los secretos se descargan automáticamente en `/opt/app/secrets/` al iniciar las instancias en formato JSON y archivos `.env` para variables de entorno.
 
 **Habilitar**: Edita `infra/envs/{ambiente}/terraform.tfvars` y configura `create_db_secret = true`, `create_api_keys_secret = true`, etc. (ver sección de Configuración Avanzada)
+
+**Scripts de gestión**:
+- `infra/verificar-secretos.ps1`: Verifica el estado de los secretos configurados
+- `infra/visualizar-secretos.ps1`: Visualiza el contenido de los secretos (con valores parcialmente ocultos)
 
 ### 6. CloudWatch (`modules/cloudwatch/`)
 Dashboard y alarmas para:
@@ -216,6 +221,32 @@ Dashboard y alarmas para:
 
 ### 7. Backend Setup (`backend-setup/`)
 Crea bucket S3 y tabla DynamoDB para estado remoto de Terraform. **Ejecutar solo una vez**.
+
+## Scripts de Gestión
+
+El proyecto incluye scripts PowerShell para facilitar la gestión de la infraestructura:
+
+### Secrets Manager
+
+- **`infra/verificar-secretos.ps1`**: Verifica el estado de los secretos configurados en Terraform y en AWS Secrets Manager
+- **`infra/visualizar-secretos.ps1`**: Visualiza el contenido de los secretos (con valores sensibles parcialmente ocultos) y proporciona URLs directas a la consola de AWS
+
+Uso:
+```powershell
+cd infra
+.\verificar-secretos.ps1    # Verificar estado
+.\visualizar-secretos.ps1   # Ver contenido
+```
+
+### CloudWatch
+
+- **`infra/test-metrics.ps1`**: Script para probar métricas y alarmas de CloudWatch (saturar CPU, verificar alarmas, etc.)
+
+Uso:
+```powershell
+cd infra
+.\test-metrics.ps1
+```
 
 ## Configuración Avanzada
 
@@ -230,6 +261,8 @@ certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxx"
 
 ### Configurar Secrets Manager
 
+En `infra/envs/{ambiente}/terraform.tfvars`:
+
 ```hcl
 # Secreto de BD
 create_db_secret = true
@@ -238,14 +271,52 @@ db_password      = "password123"  # ⚠️ Valor sensible
 db_host          = "mydb.example.com"
 db_port          = 3306
 db_name          = "myapp_db"
+db_engine        = "mysql"
 
 # API Keys
 create_api_keys_secret = true
 api_keys = {
-  stripe_api_key = "sk_live_xxxxx"
-  sendgrid_key   = "SG.xxxxx"
+  stripe_api_key   = "sk_live_xxxxx"  # ⚠️ Valores sensibles
+  sendgrid_api_key = "SG.xxxxx"
+  openai_api_key   = "sk-xxxxx"
+}
+
+# Secretos Genéricos
+app_secrets = {
+  jwt_secret = {
+    description   = "JWT signing secret"
+    secret_string = "{\"secret\":\"my-jwt-secret\",\"algorithm\":\"HS256\"}"
+  }
+  encryption_key = {
+    description   = "Clave de encriptacion"
+    secret_string = "{\"key\":\"my-encryption-key\"}"
+  }
 }
 ```
+
+**Nota**: Para secretos genéricos (`app_secrets`), el `secret_string` debe ser una cadena JSON válida (no usar `jsonencode()` en `.tfvars`).
+
+#### Scripts de Gestión de Secretos
+
+El proyecto incluye scripts PowerShell para gestionar secretos:
+
+**Verificar estado de secretos:**
+```powershell
+cd infra
+.\verificar-secretos.ps1
+```
+
+**Visualizar secretos:**
+```powershell
+cd infra
+.\visualizar-secretos.ps1
+```
+
+Estos scripts muestran:
+- Estado de los secretos configurados en Terraform
+- Contenido de los secretos (valores sensibles parcialmente ocultos)
+- URLs directas a la consola de AWS
+- Información de diagnóstico si hay problemas
 
 ### Acceso Remoto a Instancias
 
@@ -319,10 +390,16 @@ Al ejecutar `terraform apply`, se crean aproximadamente:
 
 ### Error al leer secretos en las instancias
 - Verificar permisos IAM del rol de EC2 (debe tener acceso a Secrets Manager)
-- Verificar que los secretos existen en AWS Secrets Manager
+- Verificar que los secretos existen en AWS Secrets Manager usando: `.\verificar-secretos.ps1`
 - Verificar que `create_db_secret = true` o `create_api_keys_secret = true` en terraform.tfvars
 - Conectarse a la instancia vía Session Manager y revisar logs: `sudo cat /var/log/user-data.log`
 - Verificar archivos en `/opt/app/secrets/`: `sudo ls -la /opt/app/secrets/`
+- Usar `.\visualizar-secretos.ps1` para ver el contenido de los secretos y URLs de la consola
+
+### Error: Function calls not allowed en terraform.tfvars
+- Las funciones de Terraform como `jsonencode()` no se pueden usar en archivos `.tfvars`
+- Para `app_secrets`, usar cadenas JSON directas: `secret_string = "{\"key\":\"value\"}"`
+- No usar: `secret_string = jsonencode({...})` ❌
 
 ### No puedo conectarme a las instancias
 - Las instancias usan **SSM Session Manager** (no SSH)
@@ -342,6 +419,8 @@ Al ejecutar `terraform apply`, se crean aproximadamente:
 
 ## Comandos Útiles
 
+### Terraform
+
 ```bash
 # Ver estado
 terraform show
@@ -357,6 +436,25 @@ terraform fmt
 
 # Destruir infraestructura (¡cuidado!)
 terraform destroy
+```
+
+### Scripts de Gestión
+
+**Scripts de Secrets Manager** (desde `infra/`):
+
+```powershell
+# Verificar estado de secretos
+.\verificar-secretos.ps1
+
+# Visualizar secretos (muestra contenido)
+.\visualizar-secretos.ps1
+```
+
+**Scripts de CloudWatch** (desde `infra/`):
+
+```powershell
+# Probar métricas y alarmas de CloudWatch
+.\test-metrics.ps1
 ```
 
 ## Información Adicional
