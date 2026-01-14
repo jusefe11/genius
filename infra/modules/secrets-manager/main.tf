@@ -121,3 +121,32 @@ resource "aws_secretsmanager_secret_version" "app_secrets" {
   secret_id     = aws_secretsmanager_secret.app_secrets[each.key].id
   secret_string = var.app_secrets[each.key].secret_string
 }
+
+# Recurso null que siempre limpia los secretos durante destroy
+# Esto garantiza que los secretos se eliminen completamente, incluso si no están en el estado
+resource "null_resource" "cleanup_secrets_on_destroy" {
+  # Depende de todos los secretos para ejecutarse después de ellos
+  depends_on = [
+    aws_secretsmanager_secret.db_credentials,
+    aws_secretsmanager_secret.api_keys,
+    aws_secretsmanager_secret.app_secrets
+  ]
+
+  # Lista de todos los nombres de secretos posibles
+  triggers = {
+    # Trigger que cambia cuando se crean/destruyen secretos
+    secrets_list = join(",", concat(
+      var.create_db_secret ? ["${var.project_name}/${var.environment}/database/credentials"] : [],
+      var.create_api_keys_secret ? ["${var.project_name}/${var.environment}/app/api-keys"] : [],
+      [for k in keys(var.app_secrets) : "${var.project_name}/${var.environment}/app/${k}"]
+    ))
+  }
+
+  # Durante destroy, limpia TODOS los secretos posibles
+  # Esto se ejecuta SIEMPRE, incluso si los secretos no están en el estado
+  # Usa PowerShell para compatibilidad con Windows
+  provisioner "local-exec" {
+    when    = destroy
+    command = "powershell -Command \"$secrets = '${self.triggers.secrets_list}'; $secretsArray = $secrets -split ','; foreach ($secret in $secretsArray) { if ($secret) { Write-Host 'Limpiando secreto: ' $secret; aws secretsmanager restore-secret --secret-id $secret 2>$null; Start-Sleep -Seconds 1; aws secretsmanager delete-secret --secret-id $secret --force-delete-without-recovery 2>$null } }\""
+  }
+}

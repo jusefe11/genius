@@ -1494,7 +1494,23 @@ Después de ese tiempo, podrás crear nuevos secretos con los mismos nombres.
    # Confirma con 'SI'
    ```
 
-**Nota:** Los secretos ahora tienen provisioners que los eliminan inmediatamente durante `terraform destroy`, pero si los secretos ya estaban eliminados previamente, necesitas ejecutar el script de limpieza antes de `terraform apply`.
+**Nota Importante:** 
+
+Los secretos tienen provisioners que los eliminan inmediatamente durante `terraform destroy`, **PERO** estos provisioners **solo se ejecutan** cuando:
+- El recurso está en el estado de Terraform
+- Ejecutas `terraform destroy` sobre ese recurso
+
+**Si los secretos fueron eliminados previamente** (fuera de Terraform, manualmente, o en un destroy anterior), los provisioners **NO se ejecutan** y los secretos quedan en período de recuperación.
+
+**Por eso el error sigue apareciendo:** Cuando ejecutas `terraform apply` sin haber ejecutado `terraform destroy` primero, Terraform no sabe que los secretos están eliminados y AWS no permite crear secretos con nombres que están en período de recuperación.
+
+**Solución:** Siempre usa el script de limpieza antes de `terraform apply`:
+```powershell
+cd infra
+.\limpiar-secretos-antes-apply.ps1
+# O mejor aún, usa el script seguro:
+.\terraform-apply-seguro.ps1
+```
 
 ---
 
