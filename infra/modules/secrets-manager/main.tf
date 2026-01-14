@@ -28,9 +28,10 @@ resource "aws_secretsmanager_secret" "db_credentials" {
   
   # Eliminar inmediatamente sin período de recuperación cuando Terraform destruya el recurso
   # Esto permite que terraform destroy + terraform apply funcione sin errores
+  # Primero restaura el secreto si está eliminado, luego lo elimina inmediatamente
   provisioner "local-exec" {
     when    = destroy
-    command = "aws secretsmanager delete-secret --secret-id ${self.name} --force-delete-without-recovery || true"
+    command = "aws secretsmanager restore-secret --secret-id ${self.name} 2>/dev/null || true; aws secretsmanager delete-secret --secret-id ${self.name} --force-delete-without-recovery 2>/dev/null || true"
   }
 }
 
@@ -67,9 +68,10 @@ resource "aws_secretsmanager_secret" "api_keys" {
   
   # Eliminar inmediatamente sin período de recuperación cuando Terraform destruya el recurso
   # Esto permite que terraform destroy + terraform apply funcione sin errores
+  # Primero restaura el secreto si está eliminado, luego lo elimina inmediatamente
   provisioner "local-exec" {
     when    = destroy
-    command = "aws secretsmanager delete-secret --secret-id ${self.name} --force-delete-without-recovery || true"
+    command = "aws secretsmanager restore-secret --secret-id ${self.name} 2>/dev/null || true; aws secretsmanager delete-secret --secret-id ${self.name} --force-delete-without-recovery 2>/dev/null || true"
   }
 }
 
@@ -103,9 +105,10 @@ resource "aws_secretsmanager_secret" "app_secrets" {
   
   # Eliminar inmediatamente sin período de recuperación cuando Terraform destruya el recurso
   # Esto permite que terraform destroy + terraform apply funcione sin errores
+  # Primero restaura el secreto si está eliminado, luego lo elimina inmediatamente
   provisioner "local-exec" {
     when    = destroy
-    command = "aws secretsmanager delete-secret --secret-id ${self.name} --force-delete-without-recovery || true"
+    command = "aws secretsmanager restore-secret --secret-id ${self.name} 2>/dev/null || true; aws secretsmanager delete-secret --secret-id ${self.name} --force-delete-without-recovery 2>/dev/null || true"
   }
 }
 

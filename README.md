@@ -1468,24 +1468,33 @@ Después de ese tiempo, podrás crear nuevos secretos con los mismos nombres.
 
 **Solución Definitiva:** Si los secretos ya existen y fueron restaurados, el problema es que Terraform intenta crearlos de nuevo. La mejor solución es:
 
-1. **Restaurar los secretos** (si están eliminados):
+1. **Limpiar secretos eliminados automáticamente** (RECOMENDADO):
+   ```powershell
+   cd infra
+   .\limpiar-secretos-antes-apply.ps1
+   # Luego ejecuta terraform apply normalmente
+   ```
+
+2. **O usar el script seguro que hace todo automáticamente**:
+   ```powershell
+   cd infra
+   .\terraform-apply-seguro.ps1
+   ```
+
+3. **Restaurar los secretos** (si están eliminados):
    ```powershell
    cd infra
    .\restaurar-secretos-automatico.ps1
    ```
 
-2. **Eliminar y recrear** (si no necesitas el contenido):
+4. **Eliminar y recrear** (si no necesitas el contenido):
    ```powershell
    cd infra
    .\eliminar-y-recrear-secretos.ps1
    # Confirma con 'SI'
    ```
 
-3. **Ejecutar terraform apply**:
-   ```bash
-   cd infra/envs/dev
-   terraform apply
-   ```
+**Nota:** Los secretos ahora tienen provisioners que los eliminan inmediatamente durante `terraform destroy`, pero si los secretos ya estaban eliminados previamente, necesitas ejecutar el script de limpieza antes de `terraform apply`.
 
 ---
 
