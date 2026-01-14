@@ -40,10 +40,10 @@ foreach ($secretName in $secrets) {
     $restoreOutput = & aws secretsmanager restore-secret --secret-id $secretName --region $region 2>&1 | Out-Null
     Start-Sleep -Seconds 1
     
-    # Eliminar con recovery window de 0 (eliminacion inmediata)
+    # Eliminar inmediatamente sin período de recuperación
     $deleteOutput = & aws secretsmanager delete-secret `
         --secret-id $secretName `
-        --recovery-window-in-days 0 `
+        --force-delete-without-recovery `
         --region $region `
         --output json 2>&1
     

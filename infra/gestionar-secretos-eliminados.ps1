@@ -176,7 +176,7 @@ switch ($option) {
             # Ahora eliminar con recovery window de 0 (eliminacion inmediata)
             $deleteOutput = & aws secretsmanager delete-secret `
                 --secret-id $secret.Name `
-                --recovery-window-in-days 0 `
+                --force-delete-without-recovery `
                 --region $region `
                 --output json 2>&1
             

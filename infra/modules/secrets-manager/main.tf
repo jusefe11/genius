@@ -9,6 +9,7 @@ locals {
   }
 }
 
+
 # Secreto principal para credenciales de base de datos
 resource "aws_secretsmanager_secret" "db_credentials" {
   count       = var.create_db_secret ? 1 : 0
@@ -24,6 +25,13 @@ resource "aws_secretsmanager_secret" "db_credentials" {
       Type = "database"
     }
   )
+  
+  # Eliminar inmediatamente sin período de recuperación cuando Terraform destruya el recurso
+  # Esto permite que terraform destroy + terraform apply funcione sin errores
+  provisioner "local-exec" {
+    when    = destroy
+    command = "aws secretsmanager delete-secret --secret-id ${self.name} --force-delete-without-recovery || true"
+  }
 }
 
 # Versión del secreto con las credenciales
@@ -56,6 +64,13 @@ resource "aws_secretsmanager_secret" "api_keys" {
       Type = "api-keys"
     }
   )
+  
+  # Eliminar inmediatamente sin período de recuperación cuando Terraform destruya el recurso
+  # Esto permite que terraform destroy + terraform apply funcione sin errores
+  provisioner "local-exec" {
+    when    = destroy
+    command = "aws secretsmanager delete-secret --secret-id ${self.name} --force-delete-without-recovery || true"
+  }
 }
 
 # Versión del secreto con las API Keys
@@ -85,6 +100,13 @@ resource "aws_secretsmanager_secret" "app_secrets" {
       Type = "application"
     }
   )
+  
+  # Eliminar inmediatamente sin período de recuperación cuando Terraform destruya el recurso
+  # Esto permite que terraform destroy + terraform apply funcione sin errores
+  provisioner "local-exec" {
+    when    = destroy
+    command = "aws secretsmanager delete-secret --secret-id ${self.name} --force-delete-without-recovery || true"
+  }
 }
 
 # Versión de los secretos genéricos

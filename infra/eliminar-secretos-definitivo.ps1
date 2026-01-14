@@ -37,9 +37,9 @@ foreach ($secretName in $secrets) {
             Start-Sleep -Seconds 2
         }
         
-        # Paso 3: Eliminar con recovery window de 0
+        # Paso 3: Eliminar inmediatamente sin período de recuperación
         Write-Host "  Eliminando permanentemente..." -ForegroundColor Yellow
-        $delete = & aws secretsmanager delete-secret --secret-id $secretName --recovery-window-in-days 0 --region $region --output json 2>&1
+        $delete = & aws secretsmanager delete-secret --secret-id $secretName --force-delete-without-recovery --region $region --output json 2>&1
         
         if ($LASTEXITCODE -eq 0) {
             Write-Host "  [OK] Eliminado permanentemente" -ForegroundColor Green
