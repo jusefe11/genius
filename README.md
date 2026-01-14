@@ -1445,7 +1445,18 @@ cd infra
 # ⚠️ ADVERTENCIA: Perderás el contenido de los secretos
 ```
 
-**Opción 3: Esperar el período de recuperación**
+**Opción 3: Eliminar y recrear secretos** ⚠️ Solo si no necesitas el contenido actual
+
+Si no necesitas el contenido actual de los secretos, puedes eliminarlos y recrearlos:
+
+```powershell
+cd infra
+.\eliminar-y-recrear-secretos.ps1
+# Confirma con 'SI'
+# Luego ejecuta: terraform apply
+```
+
+**Opción 4: Esperar el período de recuperación**
 
 Los secretos se eliminarán automáticamente después del período de recuperación:
 - **Dev/QA**: 7 días
@@ -1454,6 +1465,27 @@ Los secretos se eliminarán automáticamente después del período de recuperaci
 Después de ese tiempo, podrás crear nuevos secretos con los mismos nombres.
 
 **¿Por qué pasa esto?** AWS Secrets Manager tiene un período de recuperación para evitar eliminaciones accidentales. Durante este período, los secretos están "eliminados" pero aún existen y pueden restaurarse.
+
+**Solución Definitiva:** Si los secretos ya existen y fueron restaurados, el problema es que Terraform intenta crearlos de nuevo. La mejor solución es:
+
+1. **Restaurar los secretos** (si están eliminados):
+   ```powershell
+   cd infra
+   .\restaurar-secretos-automatico.ps1
+   ```
+
+2. **Eliminar y recrear** (si no necesitas el contenido):
+   ```powershell
+   cd infra
+   .\eliminar-y-recrear-secretos.ps1
+   # Confirma con 'SI'
+   ```
+
+3. **Ejecutar terraform apply**:
+   ```bash
+   cd infra/envs/dev
+   terraform apply
+   ```
 
 ---
 
