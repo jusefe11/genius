@@ -857,6 +857,53 @@ El proyecto incluye scripts PowerShell para facilitar la gestión de la infraest
 
 ### Scripts de Secrets Manager
 
+#### `restaurar-secretos-automatico.ps1` ⚡ RÁPIDO
+
+**¿Qué hace?** Restaura automáticamente todos los secretos eliminados sin preguntar.
+
+**¿Cuándo usarlo?** Cuando recibes el error: *"You can't create this secret because a secret with this name is already scheduled for deletion"*
+
+**Uso:**
+```powershell
+cd infra
+.\restaurar-secretos-automatico.ps1
+```
+
+**Ventajas:**
+- ✅ Automático: No requiere interacción
+- ✅ Rápido: Restaura todos los secretos de una vez
+- ✅ Seguro: Solo restaura secretos eliminados, no toca los activos
+
+**Ejemplo de salida:**
+```
+========================================
+  Restauracion Automatica de Secretos
+  AWS Secrets Manager
+========================================
+
+Region: us-east-1
+
+Buscando y restaurando secretos eliminados...
+
+Verificando: genius/dev/database/credentials
+  Estado: ELIMINADO - Restaurando...
+  [OK] Secreto restaurado exitosamente
+
+Verificando: genius/dev/app/api-keys
+  Estado: ELIMINADO - Restaurando...
+  [OK] Secreto restaurado exitosamente
+
+RESUMEN
+========================================
+  Secretos restaurados: 2
+  Secretos activos: 0
+  Secretos no encontrados: 2
+
+[OK] Secretos restaurados. Ahora puedes ejecutar 'terraform apply'
+```
+
+---
+
 #### `gestionar-secretos-eliminados.ps1` ⚠️ IMPORTANTE
 
 **¿Qué hace?** Gestiona secretos que están programados para eliminación (scheduled for deletion).
