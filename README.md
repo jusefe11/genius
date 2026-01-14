@@ -853,9 +853,61 @@ cd infra
 
 ## 🛠️ Scripts de Gestión
 
-El proyecto incluye scripts PowerShell para facilitar la gestión de la infraestructura.
+El proyecto incluye scripts PowerShell para facilitar la gestión de la infraestructura. Todos los scripts deben ejecutarse desde la carpeta `infra/`.
 
 ### Scripts de Secrets Manager
+
+#### `gestionar-secretos-eliminados.ps1` ⚠️ IMPORTANTE
+
+**¿Qué hace?** Gestiona secretos que están programados para eliminación (scheduled for deletion).
+
+**¿Cuándo usarlo?** Cuando recibes el error: *"You can't create this secret because a secret with this name is already scheduled for deletion"*
+
+**Uso:**
+```powershell
+cd infra
+.\gestionar-secretos-eliminados.ps1
+```
+
+**Opciones del menú:**
+1. **Restaurar secretos eliminados** ⭐ RECOMENDADO
+   - Restaura los secretos para poder usarlos de nuevo
+   - Terraform podrá crear/actualizar los secretos normalmente
+   - **No pierdes el contenido** de los secretos
+
+2. **Forzar eliminación inmediata** ⚠️ PELIGROSO
+   - Elimina permanentemente los secretos
+   - **Perderás todo el contenido** de los secretos
+   - Después podrás crear nuevos secretos con los mismos nombres
+
+3. **Esperar período de recuperación**
+   - Muestra cuántos días faltan para que se eliminen automáticamente
+   - Dev/QA: 7 días | Prod: 30 días
+
+**Ejemplo de salida:**
+```
+========================================
+SECRETOS ELIMINADOS ENCONTRADOS: 4
+========================================
+
+  - genius/dev/database/credentials
+    Estado: ELIMINADO (programado para borrado)
+    Eliminado: 2024-01-10 15:30:00
+    Periodo de recuperacion: 7 dias
+    Dias restantes: 5
+
+OPCIONES:
+  1. Restaurar secretos eliminados (RECOMENDADO)
+  2. Forzar eliminacion inmediata
+  3. Esperar a que termine el periodo de recuperacion
+
+Selecciona una opcion (1-3): 1
+
+Restaurando: genius/dev/database/credentials...
+  [OK] Secreto restaurado exitosamente
+```
+
+---
 
 #### `verificar-secretos.ps1`
 
@@ -930,6 +982,40 @@ Nombre: genius/dev/database/credentials
 
 [URL EN LA CONSOLA DE AWS]:
   https://console.aws.amazon.com/secretsmanager/...
+```
+
+#### `gestionar-secretos-eliminados.ps1`
+
+**¿Qué hace?** Gestiona secretos que están programados para eliminación (scheduled for deletion).
+
+**¿Cuándo usarlo?** Cuando recibes el error: "You can't create this secret because a secret with this name is already scheduled for deletion"
+
+**Uso:**
+```powershell
+cd infra
+.\gestionar-secretos-eliminados.ps1
+```
+
+**Opciones:**
+1. **Restaurar secretos eliminados** (Recomendado): Restaura los secretos para poder usarlos de nuevo
+2. **Forzar eliminación inmediata**: Elimina permanentemente los secretos (perderás el contenido)
+3. **Esperar período de recuperación**: Muestra cuántos días faltan para que se eliminen automáticamente
+
+**Ejemplo de salida:**
+```
+========================================
+SECRETOS ELIMINADOS ENCONTRADOS: 4
+========================================
+
+OPCIONES:
+  1. Restaurar secretos eliminados (RECOMENDADO)
+  2. Forzar eliminacion inmediata
+  3. Esperar a que termine el periodo de recuperacion
+
+Selecciona una opcion (1-3): 1
+
+Restaurando: genius/dev/database/credentials...
+  [OK] Secreto restaurado exitosamente
 ```
 
 ### Scripts de CloudWatch
@@ -1182,6 +1268,55 @@ Algunos recursos son elegibles para Free Tier de AWS (primeros 12 meses):
 
 ---
 
+### Problema: Error "secret is already scheduled for deletion"
+
+**Síntoma:**
+```
+Error: You can't create this secret because a secret with this name 
+is already scheduled for deletion.
+```
+
+**Causa:** Los secretos fueron eliminados previamente y están en el período de recuperación (7 días para dev, 30 días para prod). Durante este período, no puedes crear un nuevo secreto con el mismo nombre.
+
+**Solución Rápida (Recomendada):**
+
+**Opción 1: Restaurar los secretos eliminados**
+
+Usa el script incluido:
+```powershell
+cd infra
+.\gestionar-secretos-eliminados.ps1
+# Selecciona opción 1: Restaurar secretos eliminados
+```
+
+O manualmente con AWS CLI:
+```bash
+# Restaurar cada secreto
+aws secretsmanager restore-secret --secret-id "genius/dev/database/credentials" --region us-east-1
+aws secretsmanager restore-secret --secret-id "genius/dev/app/api-keys" --region us-east-1
+aws secretsmanager restore-secret --secret-id "genius/dev/app/jwt_secret" --region us-east-1
+aws secretsmanager restore-secret --secret-id "genius/dev/app/encryption_key" --region us-east-1
+
+# Luego ejecuta terraform apply de nuevo
+cd infra/envs/dev
+terraform apply
+```
+
+**Opción 2: Forzar eliminación inmediata (si no necesitas los secretos)**
+
+```powershell
+cd infra
+.\gestionar-secretos-eliminados.ps1
+# Selecciona opción 2: Forzar eliminación inmediata
+# ⚠️ ADVERTENCIA: Perderás el contenido de los secretos
+```
+
+**Opción 3: Esperar el período de recuperación**
+
+Los secretos se eliminarán automáticamente después del período de recuperación (7 días para dev, 30 días para prod). Después podrás crear nuevos secretos con los mismos nombres.
+
+---
+
 ### Problema: Error al leer secretos en las instancias
 
 **Síntomas:**
@@ -1217,6 +1352,61 @@ Algunos recursos son elegibles para Free Tier de AWS (primeros 12 meses):
 4. **Verificar configuración en terraform.tfvars:**
    - Asegúrate de que `create_db_secret = true` o `create_api_keys_secret = true`
    - Verifica que los valores no estén vacíos
+
+---
+
+### Problema: Error "secret is already scheduled for deletion"
+
+**Síntoma:**
+```
+Error: You can't create this secret because a secret with this name 
+is already scheduled for deletion.
+```
+
+**Causa:** Los secretos fueron eliminados previamente y están en el período de recuperación (7 días para dev, 30 días para prod). Durante este período, AWS no permite crear un nuevo secreto con el mismo nombre.
+
+**Solución Rápida (Recomendada):**
+
+**Opción 1: Restaurar los secretos eliminados** ⭐ RECOMENDADO
+
+Usa el script incluido:
+```powershell
+cd infra
+.\gestionar-secretos-eliminados.ps1
+# Selecciona opción 1: Restaurar secretos eliminados
+```
+
+O manualmente con AWS CLI:
+```bash
+# Restaurar cada secreto (reemplaza us-east-1 con tu región)
+aws secretsmanager restore-secret --secret-id "genius/dev/database/credentials" --region us-east-1
+aws secretsmanager restore-secret --secret-id "genius/dev/app/api-keys" --region us-east-1
+aws secretsmanager restore-secret --secret-id "genius/dev/app/jwt_secret" --region us-east-1
+aws secretsmanager restore-secret --secret-id "genius/dev/app/encryption_key" --region us-east-1
+
+# Luego ejecuta terraform apply de nuevo
+cd infra/envs/dev
+terraform apply
+```
+
+**Opción 2: Forzar eliminación inmediata** ⚠️ Solo si no necesitas los secretos
+
+```powershell
+cd infra
+.\gestionar-secretos-eliminados.ps1
+# Selecciona opción 2: Forzar eliminación inmediata
+# ⚠️ ADVERTENCIA: Perderás el contenido de los secretos
+```
+
+**Opción 3: Esperar el período de recuperación**
+
+Los secretos se eliminarán automáticamente después del período de recuperación:
+- **Dev/QA**: 7 días
+- **Prod**: 30 días
+
+Después de ese tiempo, podrás crear nuevos secretos con los mismos nombres.
+
+**¿Por qué pasa esto?** AWS Secrets Manager tiene un período de recuperación para evitar eliminaciones accidentales. Durante este período, los secretos están "eliminados" pero aún existen y pueden restaurarse.
 
 ---
 
