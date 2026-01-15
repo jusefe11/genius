@@ -18,6 +18,9 @@ resource "aws_secretsmanager_secret" "db_credentials" {
 
   recovery_window_in_days = var.environment == "prod" ? 30 : 7
 
+  # Depende del recurso de limpieza para asegurar que se ejecute primero
+  depends_on = [null_resource.cleanup_secrets_before_create]
+
   tags = merge(
     local.common_tags,
     {
@@ -58,6 +61,9 @@ resource "aws_secretsmanager_secret" "api_keys" {
 
   recovery_window_in_days = var.environment == "prod" ? 30 : 7
 
+  # Depende del recurso de limpieza para asegurar que se ejecute primero
+  depends_on = [null_resource.cleanup_secrets_before_create]
+
   tags = merge(
     local.common_tags,
     {
@@ -95,6 +101,9 @@ resource "aws_secretsmanager_secret" "app_secrets" {
 
   recovery_window_in_days = var.environment == "prod" ? 30 : 7
 
+  # Depende del recurso de limpieza para asegurar que se ejecute primero
+  depends_on = [null_resource.cleanup_secrets_before_create]
+
   tags = merge(
     local.common_tags,
     {
@@ -120,6 +129,29 @@ resource "aws_secretsmanager_secret_version" "app_secrets" {
 
   secret_id     = aws_secretsmanager_secret.app_secrets[each.key].id
   secret_string = var.app_secrets[each.key].secret_string
+}
+
+# Recurso null que limpia los secretos ANTES de crearlos (durante apply)
+# Esto garantiza que si los secretos están en período de recuperación, se eliminen primero
+resource "null_resource" "cleanup_secrets_before_create" {
+  # Lista de todos los nombres de secretos posibles
+  triggers = {
+    # Trigger que cambia cuando cambian los secretos a crear
+    secrets_list = join(",", concat(
+      var.create_db_secret ? ["${var.project_name}/${var.environment}/database/credentials"] : [],
+      var.create_api_keys_secret ? ["${var.project_name}/${var.environment}/app/api-keys"] : [],
+      [for k in keys(var.app_secrets) : "${var.project_name}/${var.environment}/app/${k}"]
+    ))
+    # Trigger adicional para forzar ejecución en cada apply
+    force_cleanup = timestamp()
+  }
+
+  # Durante create (antes de crear los secretos), limpia cualquier secreto eliminado
+  # Esto se ejecuta SIEMPRE antes de que Terraform intente crear los secretos
+  # Usa PowerShell para compatibilidad con Windows
+  provisioner "local-exec" {
+    command = "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$secrets = '${self.triggers.secrets_list}'; $secretsArray = $secrets -split ','; foreach ($secret in $secretsArray) { if ($secret -and $secret.Trim()) { try { $describe = aws secretsmanager describe-secret --secret-id $secret.Trim() --output json 2>&1; if ($LASTEXITCODE -eq 0) { $obj = $describe | ConvertFrom-Json; if ($obj.DeletedDate) { Write-Host 'Restaurando y eliminando secreto:' $secret; aws secretsmanager restore-secret --secret-id $secret.Trim() 2>&1 | Out-Null; Start-Sleep -Seconds 2; aws secretsmanager delete-secret --secret-id $secret.Trim() --force-delete-without-recovery 2>&1 | Out-Null; Write-Host 'Secreto limpiado:' $secret; Start-Sleep -Seconds 1 } } } catch { } } }\""
+  }
 }
 
 # Recurso null que siempre limpia los secretos durante destroy

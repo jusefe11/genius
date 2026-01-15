@@ -66,7 +66,7 @@ module "alb" {
   health_check_path = var.health_check_path
   enable_https     = var.enable_https
   certificate_arn  = var.certificate_arn
-  enable_deletion_protection = true # Activado para producción
+  enable_deletion_protection = false # Desactivado para dev
 
   # Tags para FinOps
   cost_center = var.cost_center
@@ -150,6 +150,7 @@ module "cloudwatch" {
   asg_name           = module.autoscaling.autoscaling_group_name
   cpu_threshold      = 80
   error_5xx_threshold = 5
+  expected_docker_containers = 2  # Numero total esperado de contenedores Docker en el ASG (2 instancias * 1 contenedor por instancia)
 
   # Tags para FinOps
   cost_center = var.cost_center
@@ -157,3 +158,22 @@ module "cloudwatch" {
   team        = var.team
   managed_by  = var.managed_by
 }
+
+# Data source para obtener la región actual (para el dashboard personalizado de dev)
+data "aws_region" "current" {}
+
+# Locals para el dashboard personalizado de dev
+locals {
+  # ALB name: última parte del ARN (ej: app/genius-dev-alb/1234567890abcdef)
+  alb_name = split("/", module.alb.alb_arn)[length(split("/", module.alb.alb_arn)) - 1]
+  
+  # Target Group identifier: formato "targetgroup/name/id" (requerido por CloudWatch)
+  # ARN format: arn:aws:elasticloadbalancing:region:account:targetgroup/name/id
+  # Solución robusta: extraer la parte después del último ":" que contiene "targetgroup/name/id"
+  target_group_identifier = split(":", module.alb.target_group_arn)[5]
+  
+  # Numero esperado de contenedores Docker (debe coincidir con expected_docker_containers en module.cloudwatch)
+  expected_docker_containers = 2
+}
+
+# Dashboard se crea en el módulo cloudwatch (solo CPU y Docker para dev)

@@ -111,19 +111,19 @@ variable "key_name" {
 variable "min_size" {
   description = "Número mínimo de instancias en el ASG"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "max_size" {
   description = "Número máximo de instancias en el ASG"
   type        = number
-  default     = 20
+  default     = 5
 }
 
 variable "desired_capacity" {
   description = "Capacidad deseada de instancias en el ASG"
   type        = number
-  default     = 3
+  default     = 2
 }
 
 # Tags para FinOps
