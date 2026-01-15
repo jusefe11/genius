@@ -16,7 +16,7 @@
 8. [Módulos Terraform Detallados](#-módulos-terraform-detallados)
 9. [Gestión de Secretos](#-gestión-de-secretos)
 10. [Monitoreo y Alarmas](#-monitoreo-y-alarmas)
-11. [Scripts de Gestión](#-scripts-de-gestión)
+11. [Gestión Manual de Secretos](#-gestión-manual-de-secretos)
 12. [Configuración Avanzada](#-configuración-avanzada)
 13. [Costos Estimados](#-costos-estimados)
 14. [Solución de Problemas](#-solución-de-problemas)
@@ -169,9 +169,7 @@ genius/
 │   │   ├── 📂 qa/                     # Ambiente de QA (misma estructura)
 │   │   └── 📂 prod/                   # Ambiente de producción (misma estructura)
 │   │
-│   ├── 📜 test-metrics.ps1            # Script para probar métricas de CloudWatch
-│   ├── 📜 verificar-secretos.ps1      # Script para verificar secretos
-│   └── 📜 visualizar-secretos.ps1     # Script para ver contenido de secretos
+│   └── 📜 EXPLICACION-SECRETOS.md     # Documentación sobre gestión de secretos
 │
 ├── 📂 app/                            # Código de la aplicación
 │   ├── Dockerfile                     # Imagen Docker de la aplicación
@@ -275,10 +273,6 @@ Tu usuario de AWS necesita permisos para crear y gestionar:
 
 **Permisos recomendados**: `AdministratorAccess` (para desarrollo) o una política personalizada con los permisos específicos.
 
-### 4. PowerShell (para scripts de gestión)
-
-**Windows**: Ya viene instalado
-**Linux/Mac**: Instalar PowerShell Core desde: https://github.com/PowerShell/PowerShell
 
 ---
 
@@ -403,10 +397,12 @@ El proyecto soporta múltiples ambientes (desarrollo, QA, producción) con confi
 |----------------|-----|-----|------|
 | **Instancias** | 2/2/5 | 2/2/5 | 2/2/5 |
 | **Tipo de Instancia** | t3.micro | t3.micro | t3.micro |
-| **HTTPS** | ❌ No | ❌ No | ✅ Sí (requiere certificado) |
-| **Protección de Eliminación** | ❌ No | ❌ No | ✅ Sí |
+| **HTTPS** | ❌ No | ❌ No | ❌ No |
+| **Protección de Eliminación** | ❌ No | ❌ No | ❌ No |
 | **VPC CIDR** | 10.0.0.0/16 | 10.1.0.0/16 | 10.2.0.0/16 |
-| **Recovery Window (Secretos)** | 7 días | 7 días | 30 días |
+| **Configuración** | ✅ Completa | ✅ Igual a Dev | ✅ Igual a Dev |
+| **Secrets Manager** | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado |
+| **CloudWatch Dashboard** | ✅ Habilitado | ✅ Habilitado | ✅ Habilitado |
 
 ### Configuración de Red por Ambiente
 
@@ -619,8 +615,9 @@ Secretos personalizados con contenido JSON arbitrario:
 #### Dashboard de CloudWatch
 
 Visualización en tiempo real de métricas clave:
-- 📈 **CPU Usage**: Uso de CPU de los servidores
+- 📈 **CPU Usage**: Uso de CPU promedio de todos los servidores en el Auto Scaling Group
 - 📊 **Gráficos interactivos**: Puedes hacer zoom, cambiar períodos, etc.
+- 🎯 **Métricas configuradas**: Se monitorea el uso de CPU con umbral de alarma configurado
 
 #### Alarmas
 
@@ -639,7 +636,7 @@ Notificaciones automáticas cuando algo va mal:
 **¿Cómo ver el dashboard?**
 1. Ejecuta `terraform output cloudwatch_dashboard_url`
 2. Abre la URL en tu navegador
-3. O usa el script: `.\test-metrics.ps1` y selecciona la opción para abrir el dashboard
+3. O accede desde la consola de AWS: CloudWatch → Dashboards
 
 ---
 
@@ -758,15 +755,14 @@ terraform apply
 
 ### Verificar Secretos
 
-Usa los scripts incluidos:
+Puedes verificar los secretos usando AWS CLI:
 
 ```powershell
-# Verificar estado de secretos
-cd infra
-.\verificar-secretos.ps1
+# Listar secretos
+aws secretsmanager list-secrets --region us-east-1 --filters Key=name,Values=genius/dev
 
-# Visualizar contenido de secretos
-.\visualizar-secretos.ps1
+# Ver contenido de un secreto
+aws secretsmanager get-secret-value --secret-id genius/dev/database/credentials --region us-east-1
 ```
 
 ### Acceder a Secretos desde las Instancias
@@ -804,14 +800,11 @@ El dashboard muestra métricas en tiempo real de tu infraestructura.
 
 **Acceder al dashboard:**
 ```bash
-# Opción 1: Desde Terraform
+# Desde Terraform
 cd infra/envs/dev
 terraform output cloudwatch_dashboard_url
 
-# Opción 2: Desde el script
-cd infra
-.\test-metrics.ps1
-# Selecciona la opción para abrir el dashboard
+# O desde la consola de AWS: CloudWatch → Dashboards → genius-dev-application-status
 ```
 
 **Métricas disponibles:**
@@ -827,278 +820,63 @@ cd infra
 **Ver estado de alarmas:**
 ```bash
 # Desde AWS CLI
-aws cloudwatch describe-alarms --alarm-names genius-dev-high-cpu
+aws cloudwatch describe-alarms --alarm-names genius-dev-high-cpu --region us-east-1
 
-# O desde el script
-cd infra
-.\test-metrics.ps1
-# Selecciona opción 3: Verificar estado de alarmas
+# O desde la consola de AWS: CloudWatch → Alarms
 ```
 
 ### Probar Alarmas
 
-El script `test-metrics.ps1` incluye opciones para probar las alarmas:
+Para probar las alarmas, puedes generar carga de CPU en las instancias:
 
-```powershell
-cd infra
-.\test-metrics.ps1
-```
+```bash
+# Conectarse a una instancia vía Session Manager
+aws ssm start-session --target i-xxxxx --region us-east-1
 
-**Opciones disponibles:**
-1. **Saturar CPU**: Genera carga de CPU para activar la alarma
-2. **Verificar alarmas**: Muestra el estado actual de todas las alarmas
-3. **Diagnóstico de métricas**: Verifica por qué no aparecen métricas
-
----
-
-## 🛠️ Scripts de Gestión
-
-El proyecto incluye scripts PowerShell para facilitar la gestión de la infraestructura. Todos los scripts deben ejecutarse desde la carpeta `infra/`.
-
-### Scripts de Secrets Manager
-
-#### `restaurar-secretos-automatico.ps1` ⚡ RÁPIDO
-
-**¿Qué hace?** Restaura automáticamente todos los secretos eliminados sin preguntar.
-
-**¿Cuándo usarlo?** Cuando recibes el error: *"You can't create this secret because a secret with this name is already scheduled for deletion"*
-
-**Uso:**
-```powershell
-cd infra
-.\restaurar-secretos-automatico.ps1
-```
-
-**Ventajas:**
-- ✅ Automático: No requiere interacción
-- ✅ Rápido: Restaura todos los secretos de una vez
-- ✅ Seguro: Solo restaura secretos eliminados, no toca los activos
-
-**Ejemplo de salida:**
-```
-========================================
-  Restauracion Automatica de Secretos
-  AWS Secrets Manager
-========================================
-
-Region: us-east-1
-
-Buscando y restaurando secretos eliminados...
-
-Verificando: genius/dev/database/credentials
-  Estado: ELIMINADO - Restaurando...
-  [OK] Secreto restaurado exitosamente
-
-Verificando: genius/dev/app/api-keys
-  Estado: ELIMINADO - Restaurando...
-  [OK] Secreto restaurado exitosamente
-
-RESUMEN
-========================================
-  Secretos restaurados: 2
-  Secretos activos: 0
-  Secretos no encontrados: 2
-
-[OK] Secretos restaurados. Ahora puedes ejecutar 'terraform apply'
+# Dentro de la instancia, generar carga de CPU
+yes > /dev/null &  # Ejecutar múltiples veces para saturar CPU
 ```
 
 ---
 
-#### `gestionar-secretos-eliminados.ps1` ⚠️ IMPORTANTE
+## 🛠️ Gestión Manual de Secretos
 
-**¿Qué hace?** Gestiona secretos que están programados para eliminación (scheduled for deletion).
+Para gestionar secretos manualmente, puedes usar AWS CLI:
 
-**¿Cuándo usarlo?** Cuando recibes el error: *"You can't create this secret because a secret with this name is already scheduled for deletion"*
+### Restaurar Secretos Eliminados
 
-**Uso:**
+Si recibes el error: *"You can't create this secret because a secret with this name is already scheduled for deletion"*, puedes restaurar los secretos:
+
 ```powershell
-cd infra
-.\gestionar-secretos-eliminados.ps1
+# Restaurar un secreto específico
+aws secretsmanager restore-secret --secret-id genius/dev/database/credentials --region us-east-1
+
+# O listar y restaurar todos los secretos eliminados
+aws secretsmanager list-secrets --region us-east-1 --filters Key=name,Values=genius/dev --query "SecretList[?DeletedDate!=null].Name" --output text | ForEach-Object {
+    aws secretsmanager restore-secret --secret-id $_ --region us-east-1
+}
 ```
 
-**Opciones del menú:**
-1. **Restaurar secretos eliminados** ⭐ RECOMENDADO
-   - Restaura los secretos para poder usarlos de nuevo
-   - Terraform podrá crear/actualizar los secretos normalmente
-   - **No pierdes el contenido** de los secretos
+### Verificar Estado de Secretos
 
-2. **Forzar eliminación inmediata** ⚠️ PELIGROSO
-   - Elimina permanentemente los secretos
-   - **Perderás todo el contenido** de los secretos
-   - Después podrás crear nuevos secretos con los mismos nombres
-
-3. **Esperar período de recuperación**
-   - Muestra cuántos días faltan para que se eliminen automáticamente
-   - Dev/QA: 7 días | Prod: 30 días
-
-**Ejemplo de salida:**
-```
-========================================
-SECRETOS ELIMINADOS ENCONTRADOS: 4
-========================================
-
-  - genius/dev/database/credentials
-    Estado: ELIMINADO (programado para borrado)
-    Eliminado: 2024-01-10 15:30:00
-    Periodo de recuperacion: 7 dias
-    Dias restantes: 5
-
-OPCIONES:
-  1. Restaurar secretos eliminados (RECOMENDADO)
-  2. Forzar eliminacion inmediata
-  3. Esperar a que termine el periodo de recuperacion
-
-Selecciona una opcion (1-3): 1
-
-Restaurando: genius/dev/database/credentials...
-  [OK] Secreto restaurado exitosamente
-```
-
----
-
-#### `verificar-secretos.ps1`
-
-**¿Qué hace?** Verifica el estado de los secretos configurados.
-
-**Uso:**
 ```powershell
-cd infra
-.\verificar-secretos.ps1
+# Listar todos los secretos del proyecto
+aws secretsmanager list-secrets --region us-east-1 --filters Key=name,Values=genius/dev
+
+# Ver detalles de un secreto específico
+aws secretsmanager describe-secret --secret-id genius/dev/database/credentials --region us-east-1
 ```
 
-**Muestra:**
-- ✅ Si los secretos están configurados en Terraform
-- ✅ Si los secretos existen en AWS Secrets Manager
-- ✅ Estado de cada secreto (ACTIVO, ELIMINADO)
-- ✅ Información de diagnóstico si hay problemas
+### Eliminar Secretos Permanentemente
 
-**Ejemplo de salida:**
-```
-========================================
-  Verificacion de Secretos AWS
-  Secrets Manager
-========================================
+⚠️ **ADVERTENCIA**: Esto elimina permanentemente el secreto y no se puede recuperar.
 
-Region: us-east-1
-
-PASO 1: Obteniendo informacion de Terraform...
-OK Prefijo de secretos: genius/dev
-
-OK Se encontraron 4 secretos configurados
-
-PASO 2: Verificando secretos en AWS Secrets Manager...
-  [OK] Secreto existe
-  Nombre: genius/dev/database/credentials
-  Estado: ACTIVO
-  Versiones: 1
-```
-
-#### `visualizar-secretos.ps1`
-
-**¿Qué hace?** Visualiza el contenido de los secretos (con valores sensibles parcialmente ocultos).
-
-**Uso:**
 ```powershell
-cd infra
-.\visualizar-secretos.ps1
+# Eliminar sin período de recuperación
+aws secretsmanager delete-secret --secret-id genius/dev/database/credentials --force-delete-without-recovery --region us-east-1
 ```
 
-**Muestra:**
-- 📄 Contenido de cada secreto
-- 🔒 Valores sensibles parcialmente ocultos (ej: `pass****word`)
-- 🔗 URLs directas a la consola de AWS
-- 📊 Información detallada de cada secreto
-
-**Ejemplo de salida:**
-```
-========================================
-SECRETO 1 de 4
-========================================
-
-ARN: arn:aws:secretsmanager:us-east-1:123456789012:secret:genius/dev/database/credentials
-Nombre: genius/dev/database/credentials
-
-[CONTENIDO DEL SECRETO (JSON)]:
-========================================
-  username : genius_user
-  password : Geni****2024!
-  host : genius-db.example.com
-  port : 3306
-  database : genius_db
-  engine : mysql
-
-[URL EN LA CONSOLA DE AWS]:
-  https://console.aws.amazon.com/secretsmanager/...
-```
-
-#### `gestionar-secretos-eliminados.ps1`
-
-**¿Qué hace?** Gestiona secretos que están programados para eliminación (scheduled for deletion).
-
-**¿Cuándo usarlo?** Cuando recibes el error: "You can't create this secret because a secret with this name is already scheduled for deletion"
-
-**Uso:**
-```powershell
-cd infra
-.\gestionar-secretos-eliminados.ps1
-```
-
-**Opciones:**
-1. **Restaurar secretos eliminados** (Recomendado): Restaura los secretos para poder usarlos de nuevo
-2. **Forzar eliminación inmediata**: Elimina permanentemente los secretos (perderás el contenido)
-3. **Esperar período de recuperación**: Muestra cuántos días faltan para que se eliminen automáticamente
-
-**Ejemplo de salida:**
-```
-========================================
-SECRETOS ELIMINADOS ENCONTRADOS: 4
-========================================
-
-OPCIONES:
-  1. Restaurar secretos eliminados (RECOMENDADO)
-  2. Forzar eliminacion inmediata
-  3. Esperar a que termine el periodo de recuperacion
-
-Selecciona una opcion (1-3): 1
-
-Restaurando: genius/dev/database/credentials...
-  [OK] Secreto restaurado exitosamente
-```
-
-### Scripts de CloudWatch
-
-#### `test-metrics.ps1`
-
-**¿Qué hace?** Permite probar métricas y alarmas de CloudWatch.
-
-**Uso:**
-```powershell
-cd infra
-.\test-metrics.ps1
-```
-
-**Opciones del menú:**
-1. **Saturar CPU**: Genera carga de CPU para activar la alarma
-2. **Verificar alarmas**: Muestra el estado de todas las alarmas
-3. **Diagnóstico de métricas**: Verifica por qué no aparecen métricas
-
-**Ejemplo de uso:**
-```
-========================================
-  Prueba de Metricas CloudWatch
-  Dashboard: genius-dev-application-status
-========================================
-
-ACTIVAR ALARMAS (Pruebas de Fallo):
-  1. Widget 1: CPU Usage [high-cpu]
-     - Activa cuando CPUUtilization > 80% durante 1 minuto
-
-VERIFICACION:
-  3. Verificar estado de todas las alarmas
-  7. Verificar metricas de CPU en CloudWatch (diagnostico)
-
-Selecciona una opcion (1-7): 1
-```
+Para más información sobre la gestión de secretos, consulta `infra/EXPLICACION-SECRETOS.md`.
 
 ---
 
@@ -1327,16 +1105,9 @@ is already scheduled for deletion.
 
 **Solución Rápida (Recomendada):**
 
-**Opción 1: Restaurar los secretos eliminados**
+**Opción 1: Restaurar los secretos eliminados** ⭐ RECOMENDADO
 
-Usa el script incluido:
-```powershell
-cd infra
-.\gestionar-secretos-eliminados.ps1
-# Selecciona opción 1: Restaurar secretos eliminados
-```
-
-O manualmente con AWS CLI:
+Restaura los secretos usando AWS CLI:
 ```bash
 # Restaurar cada secreto
 aws secretsmanager restore-secret --secret-id "genius/dev/database/credentials" --region us-east-1
@@ -1349,13 +1120,11 @@ cd infra/envs/dev
 terraform apply
 ```
 
-**Opción 2: Forzar eliminación inmediata (si no necesitas los secretos)**
+**Opción 2: Forzar eliminación inmediata** ⚠️ Solo si no necesitas los secretos
 
-```powershell
-cd infra
-.\gestionar-secretos-eliminados.ps1
-# Selecciona opción 2: Forzar eliminación inmediata
-# ⚠️ ADVERTENCIA: Perderás el contenido de los secretos
+```bash
+# Eliminar permanentemente (pierdes el contenido)
+aws secretsmanager delete-secret --secret-id "genius/dev/database/credentials" --force-delete-without-recovery --region us-east-1
 ```
 
 **Opción 3: Esperar el período de recuperación**
@@ -1373,9 +1142,12 @@ Los secretos se eliminarán automáticamente después del período de recuperaci
 **Soluciones:**
 
 1. **Verificar que los secretos existen:**
-   ```powershell
-   cd infra
-   .\verificar-secretos.ps1
+   ```bash
+   # Listar secretos
+   aws secretsmanager list-secrets --region us-east-1 --filters Key=name,Values=genius/dev
+   
+   # Ver detalles de un secreto
+   aws secretsmanager describe-secret --secret-id genius/dev/database/credentials --region us-east-1
    ```
 
 2. **Verificar permisos IAM:**
@@ -1416,14 +1188,7 @@ is already scheduled for deletion.
 
 **Opción 1: Restaurar los secretos eliminados** ⭐ RECOMENDADO
 
-Usa el script incluido:
-```powershell
-cd infra
-.\gestionar-secretos-eliminados.ps1
-# Selecciona opción 1: Restaurar secretos eliminados
-```
-
-O manualmente con AWS CLI:
+Restaura los secretos usando AWS CLI:
 ```bash
 # Restaurar cada secreto (reemplaza us-east-1 con tu región)
 aws secretsmanager restore-secret --secret-id "genius/dev/database/credentials" --region us-east-1
@@ -1438,25 +1203,12 @@ terraform apply
 
 **Opción 2: Forzar eliminación inmediata** ⚠️ Solo si no necesitas los secretos
 
-```powershell
-cd infra
-.\gestionar-secretos-eliminados.ps1
-# Selecciona opción 2: Forzar eliminación inmediata
-# ⚠️ ADVERTENCIA: Perderás el contenido de los secretos
+```bash
+# Eliminar permanentemente (pierdes el contenido)
+aws secretsmanager delete-secret --secret-id "genius/dev/database/credentials" --force-delete-without-recovery --region us-east-1
 ```
 
-**Opción 3: Eliminar y recrear secretos** ⚠️ Solo si no necesitas el contenido actual
-
-Si no necesitas el contenido actual de los secretos, puedes eliminarlos y recrearlos:
-
-```powershell
-cd infra
-.\eliminar-y-recrear-secretos.ps1
-# Confirma con 'SI'
-# Luego ejecuta: terraform apply
-```
-
-**Opción 4: Esperar el período de recuperación**
+**Opción 3: Esperar el período de recuperación**
 
 Los secretos se eliminarán automáticamente después del período de recuperación:
 - **Dev/QA**: 7 días
@@ -1466,51 +1218,7 @@ Después de ese tiempo, podrás crear nuevos secretos con los mismos nombres.
 
 **¿Por qué pasa esto?** AWS Secrets Manager tiene un período de recuperación para evitar eliminaciones accidentales. Durante este período, los secretos están "eliminados" pero aún existen y pueden restaurarse.
 
-**Solución Definitiva:** Si los secretos ya existen y fueron restaurados, el problema es que Terraform intenta crearlos de nuevo. La mejor solución es:
-
-1. **Limpiar secretos eliminados automáticamente** (RECOMENDADO):
-   ```powershell
-   cd infra
-   .\limpiar-secretos-antes-apply.ps1
-   # Luego ejecuta terraform apply normalmente
-   ```
-
-2. **O usar el script seguro que hace todo automáticamente**:
-   ```powershell
-   cd infra
-   .\terraform-apply-seguro.ps1
-   ```
-
-3. **Restaurar los secretos** (si están eliminados):
-   ```powershell
-   cd infra
-   .\restaurar-secretos-automatico.ps1
-   ```
-
-4. **Eliminar y recrear** (si no necesitas el contenido):
-   ```powershell
-   cd infra
-   .\eliminar-y-recrear-secretos.ps1
-   # Confirma con 'SI'
-   ```
-
-**Nota Importante:** 
-
-Los secretos tienen provisioners que los eliminan inmediatamente durante `terraform destroy`, **PERO** estos provisioners **solo se ejecutan** cuando:
-- El recurso está en el estado de Terraform
-- Ejecutas `terraform destroy` sobre ese recurso
-
-**Si los secretos fueron eliminados previamente** (fuera de Terraform, manualmente, o en un destroy anterior), los provisioners **NO se ejecutan** y los secretos quedan en período de recuperación.
-
-**Por eso el error sigue apareciendo:** Cuando ejecutas `terraform apply` sin haber ejecutado `terraform destroy` primero, Terraform no sabe que los secretos están eliminados y AWS no permite crear secretos con nombres que están en período de recuperación.
-
-**Solución:** Siempre usa el script de limpieza antes de `terraform apply`:
-```powershell
-cd infra
-.\limpiar-secretos-antes-apply.ps1
-# O mejor aún, usa el script seguro:
-.\terraform-apply-seguro.ps1
-```
+Para más información sobre este problema, consulta `infra/EXPLICACION-SECRETOS.md`.
 
 ---
 
@@ -1643,13 +1351,18 @@ Todos los recursos incluyen tags para gestión de costos y organización:
 
 ### Configuración Actual por Defecto
 
-Todos los ambientes están configurados con:
+Todos los ambientes (dev, qa, prod) están configurados **de forma idéntica**:
 
-- **Auto Scaling**: min=2, desired=2, max=5
+- **Auto Scaling**: min=1 (default), desired=2, max=5
 - **Instance Type**: t3.micro (elegible para Free Tier)
-- **HTTPS**: Deshabilitado (habilitar en producción cuando se tenga certificado)
+- **HTTPS**: Deshabilitado (habilitar cuando se tenga certificado)
 - **Health Check Path**: `/` (configurable)
-- **Secrets Manager**: Deshabilitado por defecto (habilitar según necesidad)
+- **Secrets Manager**: Habilitado con configuración completa
+  - Secreto de Base de Datos habilitado
+  - Secreto de API Keys habilitado
+  - Secretos genéricos habilitados (jwt_secret, encryption_key)
+- **CloudWatch**: Dashboard y alarmas habilitados
+- **Deletion Protection**: Deshabilitado en todos los ambientes
 
 ### Mejores Prácticas Implementadas
 
@@ -1672,7 +1385,7 @@ Todos los ambientes están configurados con:
 ✅ **Mantenibilidad:**
 - Código modular y reutilizable
 - Configuración por ambiente
-- Scripts de gestión automatizados
+- Documentación completa
 
 ---
 
@@ -1697,7 +1410,7 @@ Si encuentras errores o tienes sugerencias de mejora:
 
 ---
 
-**Última actualización**: Enero 2024
+**Última actualización**: Enero 2025
 
 **Versión**: 1.0.0
 
