@@ -148,10 +148,28 @@ resource "null_resource" "cleanup_secrets_before_create" {
 
   # Durante create (antes de crear los secretos), limpia cualquier secreto eliminado
   # Esto se ejecuta SIEMPRE antes de que Terraform intente crear los secretos
-  # Comando multiplataforma: detecta el sistema operativo y usa el comando apropiado
   provisioner "local-exec" {
-    interpreter = ["sh", "-c"]
-    command     = "secrets='${self.triggers.secrets_list}'; echo \"$$secrets\" | tr ',' '\\n' | while read secret; do secret=$$(echo \"$$secret\" | xargs); if [ -n \"$$secret\" ]; then describe_output=$$(aws secretsmanager describe-secret --secret-id \"$$secret\" --output json 2>/dev/null); if [ $$? -eq 0 ]; then deleted_date=$$(echo \"$$describe_output\" | grep -o '\"DeletedDate\"[[:space:]]*:[[:space:]]*\"[^\"]*\"' | cut -d'\"' -f4 || echo \"\"); if [ -n \"$$deleted_date\" ] && [ \"$$deleted_date\" != \"null\" ]; then echo \"Restaurando y eliminando secreto: $$secret\"; aws secretsmanager restore-secret --secret-id \"$$secret\" 2>/dev/null || true; sleep 2; aws secretsmanager delete-secret --secret-id \"$$secret\" --force-delete-without-recovery 2>/dev/null || true; echo \"Secreto limpiado: $$secret\"; sleep 1; fi; fi; fi; done"
+    interpreter = ["/bin/sh", "-c"]
+    command     = <<-EOT
+      secrets="${self.triggers.secrets_list}"
+      echo "$$secrets" | tr ',' '\n' | while read secret; do
+        secret=$$(echo "$$secret" | xargs)
+        if [ -n "$$secret" ]; then
+          describe_output=$$(aws secretsmanager describe-secret --secret-id "$$secret" --output json 2>/dev/null)
+          if [ $$? -eq 0 ]; then
+            deleted_date=$$(echo "$$describe_output" | grep -o '"DeletedDate"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4 || echo "")
+            if [ -n "$$deleted_date" ] && [ "$$deleted_date" != "null" ]; then
+              echo "Restaurando y eliminando secreto: $$secret"
+              aws secretsmanager restore-secret --secret-id "$$secret" 2>/dev/null || true
+              sleep 2
+              aws secretsmanager delete-secret --secret-id "$$secret" --force-delete-without-recovery 2>/dev/null || true
+              echo "Secreto limpiado: $$secret"
+              sleep 1
+            fi
+          fi
+        fi
+      done
+    EOT
   }
 }
 
@@ -180,7 +198,18 @@ resource "null_resource" "cleanup_secrets_on_destroy" {
   # Usamos self.triggers.secrets_list que contiene la lista de secretos guardada durante la creación
   provisioner "local-exec" {
     when        = destroy
-    interpreter = ["sh", "-c"]
-    command     = "secrets='${self.triggers.secrets_list}'; echo \"$$secrets\" | tr ',' '\\n' | while read secret; do secret=$$(echo \"$$secret\" | xargs); if [ -n \"$$secret\" ]; then echo \"Limpiando secreto: $$secret\"; aws secretsmanager restore-secret --secret-id \"$$secret\" 2>/dev/null || true; sleep 1; aws secretsmanager delete-secret --secret-id \"$$secret\" --force-delete-without-recovery 2>/dev/null || true; fi; done"
+    interpreter = ["/bin/sh", "-c"]
+    command     = <<-EOT
+      secrets="${self.triggers.secrets_list}"
+      echo "$$secrets" | tr ',' '\n' | while read secret; do
+        secret=$$(echo "$$secret" | xargs)
+        if [ -n "$$secret" ]; then
+          echo "Limpiando secreto: $$secret"
+          aws secretsmanager restore-secret --secret-id "$$secret" 2>/dev/null || true
+          sleep 1
+          aws secretsmanager delete-secret --secret-id "$$secret" --force-delete-without-recovery 2>/dev/null || true
+        fi
+      done
+    EOT
   }
 }
