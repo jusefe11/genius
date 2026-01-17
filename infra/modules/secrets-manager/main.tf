@@ -160,19 +160,19 @@ resource "null_resource" "cleanup_secrets_before_create" {
       elif command -v sh > /dev/null 2>&1; then
         # Bash/Shell en Linux/macOS/Git Bash
         secrets="${self.triggers.secrets_list}"
-        IFS=',' read -ra SECRET_ARRAY <<< "$secrets"
-        for secret in "${SECRET_ARRAY[@]}"; do
-          if [ -n "$secret" ] && [ "$secret" != "" ]; then
-            secret=$(echo "$secret" | xargs)
-            describe_output=$(aws secretsmanager describe-secret --secret-id "$secret" --output json 2>/dev/null)
-            if [ $? -eq 0 ]; then
-              deleted_date=$(echo "$describe_output" | grep -o '"DeletedDate"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4 || echo "")
-              if [ -n "$deleted_date" ] && [ "$deleted_date" != "null" ]; then
-                echo "Restaurando y eliminando secreto: $secret"
-                aws secretsmanager restore-secret --secret-id "$secret" 2>/dev/null || true
+        IFS=',' read -ra SECRET_ARRAY <<< "$$secrets"
+        for secret in "$${SECRET_ARRAY[@]}"; do
+          if [ -n "$$secret" ] && [ "$$secret" != "" ]; then
+            secret=$$(echo "$$secret" | xargs)
+            describe_output=$$(aws secretsmanager describe-secret --secret-id "$$secret" --output json 2>/dev/null)
+            if [ $$? -eq 0 ]; then
+              deleted_date=$$(echo "$$describe_output" | grep -o '"DeletedDate"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4 || echo "")
+              if [ -n "$$deleted_date" ] && [ "$$deleted_date" != "null" ]; then
+                echo "Restaurando y eliminando secreto: $$secret"
+                aws secretsmanager restore-secret --secret-id "$$secret" 2>/dev/null || true
                 sleep 2
-                aws secretsmanager delete-secret --secret-id "$secret" --force-delete-without-recovery 2>/dev/null || true
-                echo "Secreto limpiado: $secret"
+                aws secretsmanager delete-secret --secret-id "$$secret" --force-delete-without-recovery 2>/dev/null || true
+                echo "Secreto limpiado: $$secret"
                 sleep 1
               fi
             fi
@@ -207,20 +207,25 @@ resource "null_resource" "cleanup_secrets_on_destroy" {
 
   # Durante destroy, limpia TODOS los secretos posibles
   # Esto se ejecuta SIEMPRE, incluso si los secretos no están en el estado
-  # Comando multiplataforma: usa sh que está disponible en Linux/macOS/WSL/Git Bash
+  # Nota: No podemos usar self.triggers en destroy-time provisioners, así que
+  # construimos la lista de secretos directamente desde las variables
   provisioner "local-exec" {
     when        = destroy
     interpreter = ["sh", "-c"]
     command = <<-EOT
-      secrets="${self.triggers.secrets_list}"
-      IFS=',' read -ra SECRET_ARRAY <<< "$secrets"
-      for secret in "${SECRET_ARRAY[@]}"; do
-        if [ -n "$secret" ] && [ "$secret" != "" ]; then
-          secret=$(echo "$secret" | xargs)
-          echo "Limpiando secreto: $secret"
-          aws secretsmanager restore-secret --secret-id "$secret" 2>/dev/null || true
+      secrets="${join(",", concat(
+        var.create_db_secret ? ["${var.project_name}/${var.environment}/database/credentials"] : [],
+        var.create_api_keys_secret ? ["${var.project_name}/${var.environment}/app/api-keys"] : [],
+        [for k in keys(var.app_secrets) : "${var.project_name}/${var.environment}/app/${k}"]
+      ))}"
+      IFS=',' read -ra SECRET_ARRAY <<< "$$secrets"
+      for secret in "$${SECRET_ARRAY[@]}"; do
+        if [ -n "$$secret" ] && [ "$$secret" != "" ]; then
+          secret=$$(echo "$$secret" | xargs)
+          echo "Limpiando secreto: $$secret"
+          aws secretsmanager restore-secret --secret-id "$$secret" 2>/dev/null || true
           sleep 1
-          aws secretsmanager delete-secret --secret-id "$secret" --force-delete-without-recovery 2>/dev/null || true
+          aws secretsmanager delete-secret --secret-id "$$secret" --force-delete-without-recovery 2>/dev/null || true
         fi
       done
     EOT
