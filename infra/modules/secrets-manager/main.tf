@@ -207,17 +207,12 @@ resource "null_resource" "cleanup_secrets_on_destroy" {
 
   # Durante destroy, limpia TODOS los secretos posibles
   # Esto se ejecuta SIEMPRE, incluso si los secretos no están en el estado
-  # Nota: No podemos usar self.triggers en destroy-time provisioners, así que
-  # construimos la lista de secretos directamente desde las variables
+  # Usamos self.triggers.secrets_list que contiene la lista de secretos guardada durante la creación
   provisioner "local-exec" {
     when        = destroy
     interpreter = ["sh", "-c"]
     command = <<-EOT
-      secrets="${join(",", concat(
-        var.create_db_secret ? ["${var.project_name}/${var.environment}/database/credentials"] : [],
-        var.create_api_keys_secret ? ["${var.project_name}/${var.environment}/app/api-keys"] : [],
-        [for k in keys(var.app_secrets) : "${var.project_name}/${var.environment}/app/${k}"]
-      ))}"
+      secrets="${self.triggers.secrets_list}"
       IFS=',' read -ra SECRET_ARRAY <<< "$$secrets"
       for secret in "$${SECRET_ARRAY[@]}"; do
         if [ -n "$$secret" ] && [ "$$secret" != "" ]; then
