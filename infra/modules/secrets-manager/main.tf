@@ -160,8 +160,10 @@ resource "null_resource" "cleanup_secrets_before_create" {
       elif command -v sh > /dev/null 2>&1; then
         # Bash/Shell en Linux/macOS/Git Bash - compatible con /bin/sh POSIX
         secrets="${self.triggers.secrets_list}"
-        echo "$$secrets" | sed 's/,/\n/g' | while read secret; do
-          secret=$$(echo "$$secret" | sed 's/^[[:space:]]*//;s/[[:space:]]*$$//')
+        OLD_IFS=$$IFS
+        IFS=','
+        for secret in $$secrets; do
+          secret=$$(echo "$$secret" | xargs)
           if [ -n "$$secret" ]; then
             describe_output=$$(aws secretsmanager describe-secret --secret-id "$$secret" --output json 2>/dev/null)
             if [ $$? -eq 0 ]; then
@@ -177,6 +179,7 @@ resource "null_resource" "cleanup_secrets_before_create" {
             fi
           fi
         done
+        IFS=$$OLD_IFS
       else
         echo "Warning: No se encontró PowerShell ni sh. Algunos secretos eliminados pueden no limpiarse automáticamente."
       fi
@@ -212,8 +215,10 @@ resource "null_resource" "cleanup_secrets_on_destroy" {
     interpreter = ["sh", "-c"]
     command = <<-EOT
       secrets="${self.triggers.secrets_list}"
-      echo "$$secrets" | sed 's/,/\n/g' | while read secret; do
-        secret=$$(echo "$$secret" | sed 's/^[[:space:]]*//;s/[[:space:]]*$$//')
+      OLD_IFS=$$IFS
+      IFS=','
+      for secret in $$secrets; do
+        secret=$$(echo "$$secret" | xargs)
         if [ -n "$$secret" ]; then
           echo "Limpiando secreto: $$secret"
           aws secretsmanager restore-secret --secret-id "$$secret" 2>/dev/null || true
@@ -221,6 +226,7 @@ resource "null_resource" "cleanup_secrets_on_destroy" {
           aws secretsmanager delete-secret --secret-id "$$secret" --force-delete-without-recovery 2>/dev/null || true
         fi
       done
+      IFS=$$OLD_IFS
     EOT
   }
 }
