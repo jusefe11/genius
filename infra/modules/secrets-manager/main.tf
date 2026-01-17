@@ -152,8 +152,7 @@ resource "null_resource" "cleanup_secrets_before_create" {
     interpreter = ["/bin/sh", "-c"]
     command     = <<-EOT
       secrets="${self.triggers.secrets_list}"
-      echo "$$secrets" | tr ',' '\n' | while read secret; do
-        secret=$$(echo "$$secret" | sed 's/^[[:space:]]*//;s/[[:space:]]*$$//')
+      echo "$$secrets" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$$//' | while read secret; do
         if [ -n "$$secret" ]; then
           if aws secretsmanager describe-secret --secret-id "$$secret" --output json 2>/dev/null | grep -q '"DeletedDate"'; then
             echo "Restaurando y eliminando secreto: $$secret"
@@ -197,8 +196,7 @@ resource "null_resource" "cleanup_secrets_on_destroy" {
     interpreter = ["/bin/sh", "-c"]
     command     = <<-EOT
       secrets="${self.triggers.secrets_list}"
-      echo "$$secrets" | tr ',' '\n' | while read secret; do
-        secret=$$(echo "$$secret" | sed 's/^[[:space:]]*//;s/[[:space:]]*$$//')
+      echo "$$secrets" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$$//' | while read secret; do
         if [ -n "$$secret" ]; then
           echo "Limpiando secreto: $$secret"
           aws secretsmanager restore-secret --secret-id "$$secret" 2>/dev/null || true
