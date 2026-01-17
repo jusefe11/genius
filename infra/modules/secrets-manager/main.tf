@@ -158,11 +158,11 @@ resource "null_resource" "cleanup_secrets_before_create" {
         # PowerShell en Windows
         powershell -NoProfile -ExecutionPolicy Bypass -Command "$secrets = '${self.triggers.secrets_list}'; $secretsArray = $secrets -split ','; foreach ($secret in $secretsArray) { if ($secret -and ($secret.Trim())) { try { $describe = aws secretsmanager describe-secret --secret-id $secret.Trim() --output json 2>&1; if ($LASTEXITCODE -eq 0) { $obj = $describe | ConvertFrom-Json; if ($obj.DeletedDate) { Write-Host \"Restaurando y eliminando secreto: $secret\"; aws secretsmanager restore-secret --secret-id $secret.Trim() 2>&1 | Out-Null; Start-Sleep -Seconds 2; aws secretsmanager delete-secret --secret-id $secret.Trim() --force-delete-without-recovery 2>&1 | Out-Null; Write-Host \"Secreto limpiado: $secret\"; Start-Sleep -Seconds 1 } } } catch { } } }"
       elif command -v sh > /dev/null 2>&1; then
-        # Bash/Shell en Linux/macOS/Git Bash - compatible con /bin/sh
+        # Bash/Shell en Linux/macOS/Git Bash - compatible con /bin/sh POSIX
         secrets="${self.triggers.secrets_list}"
-        echo "$$secrets" | tr ',' '\n' | while IFS= read -r secret; do
-          secret=$$(echo "$$secret" | xargs)
-          if [ -n "$$secret" ] && [ "$$secret" != "" ]; then
+        echo "$$secrets" | sed 's/,/\n/g' | while read secret; do
+          secret=$$(echo "$$secret" | sed 's/^[[:space:]]*//;s/[[:space:]]*$$//')
+          if [ -n "$$secret" ]; then
             describe_output=$$(aws secretsmanager describe-secret --secret-id "$$secret" --output json 2>/dev/null)
             if [ $$? -eq 0 ]; then
               deleted_date=$$(echo "$$describe_output" | grep -o '"DeletedDate"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4 || echo "")
@@ -212,9 +212,9 @@ resource "null_resource" "cleanup_secrets_on_destroy" {
     interpreter = ["sh", "-c"]
     command = <<-EOT
       secrets="${self.triggers.secrets_list}"
-      echo "$$secrets" | tr ',' '\n' | while IFS= read -r secret; do
-        secret=$$(echo "$$secret" | xargs)
-        if [ -n "$$secret" ] && [ "$$secret" != "" ]; then
+      echo "$$secrets" | sed 's/,/\n/g' | while read secret; do
+        secret=$$(echo "$$secret" | sed 's/^[[:space:]]*//;s/[[:space:]]*$$//')
+        if [ -n "$$secret" ]; then
           echo "Limpiando secreto: $$secret"
           aws secretsmanager restore-secret --secret-id "$$secret" 2>/dev/null || true
           sleep 1
