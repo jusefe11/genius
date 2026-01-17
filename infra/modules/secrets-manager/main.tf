@@ -158,12 +158,14 @@ resource "null_resource" "cleanup_secrets_before_create" {
         # PowerShell en Windows
         powershell -NoProfile -ExecutionPolicy Bypass -Command "$secrets = '${self.triggers.secrets_list}'; $secretsArray = $secrets -split ','; foreach ($secret in $secretsArray) { if ($secret -and ($secret.Trim())) { try { $describe = aws secretsmanager describe-secret --secret-id $secret.Trim() --output json 2>&1; if ($LASTEXITCODE -eq 0) { $obj = $describe | ConvertFrom-Json; if ($obj.DeletedDate) { Write-Host \"Restaurando y eliminando secreto: $secret\"; aws secretsmanager restore-secret --secret-id $secret.Trim() 2>&1 | Out-Null; Start-Sleep -Seconds 2; aws secretsmanager delete-secret --secret-id $secret.Trim() --force-delete-without-recovery 2>&1 | Out-Null; Write-Host \"Secreto limpiado: $secret\"; Start-Sleep -Seconds 1 } } } catch { } } }"
       elif command -v sh > /dev/null 2>&1; then
-        # Bash/Shell en Linux/macOS/Git Bash
+        # Bash/Shell en Linux/macOS/Git Bash - compatible con /bin/sh
         secrets="${self.triggers.secrets_list}"
-        IFS=',' read -ra SECRET_ARRAY <<< "$$secrets"
-        for secret in "$${SECRET_ARRAY[@]}"; do
+        OLD_IFS="$$IFS"
+        IFS=','
+        for secret in $$secrets; do
+          IFS="$$OLD_IFS"
+          secret=$$(echo "$$secret" | xargs)
           if [ -n "$$secret" ] && [ "$$secret" != "" ]; then
-            secret=$$(echo "$$secret" | xargs)
             describe_output=$$(aws secretsmanager describe-secret --secret-id "$$secret" --output json 2>/dev/null)
             if [ $$? -eq 0 ]; then
               deleted_date=$$(echo "$$describe_output" | grep -o '"DeletedDate"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4 || echo "")
@@ -177,7 +179,9 @@ resource "null_resource" "cleanup_secrets_before_create" {
               fi
             fi
           fi
+          IFS=','
         done
+        IFS="$$OLD_IFS"
       else
         echo "Warning: No se encontró PowerShell ni sh. Algunos secretos eliminados pueden no limpiarse automáticamente."
       fi
@@ -213,16 +217,20 @@ resource "null_resource" "cleanup_secrets_on_destroy" {
     interpreter = ["sh", "-c"]
     command = <<-EOT
       secrets="${self.triggers.secrets_list}"
-      IFS=',' read -ra SECRET_ARRAY <<< "$$secrets"
-      for secret in "$${SECRET_ARRAY[@]}"; do
+      OLD_IFS="$$IFS"
+      IFS=','
+      for secret in $$secrets; do
+        IFS="$$OLD_IFS"
+        secret=$$(echo "$$secret" | xargs)
         if [ -n "$$secret" ] && [ "$$secret" != "" ]; then
-          secret=$$(echo "$$secret" | xargs)
           echo "Limpiando secreto: $$secret"
           aws secretsmanager restore-secret --secret-id "$$secret" 2>/dev/null || true
           sleep 1
           aws secretsmanager delete-secret --secret-id "$$secret" --force-delete-without-recovery 2>/dev/null || true
         fi
+        IFS=','
       done
+      IFS="$$OLD_IFS"
     EOT
   }
 }
