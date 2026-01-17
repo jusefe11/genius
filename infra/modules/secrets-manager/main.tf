@@ -148,9 +148,40 @@ resource "null_resource" "cleanup_secrets_before_create" {
 
   # Durante create (antes de crear los secretos), limpia cualquier secreto eliminado
   # Esto se ejecuta SIEMPRE antes de que Terraform intente crear los secretos
-  # Usa PowerShell para compatibilidad con Windows
+  # Comando multiplataforma: detecta el sistema operativo y usa el comando apropiado
   provisioner "local-exec" {
-    command = "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$secrets = '${self.triggers.secrets_list}'; $secretsArray = $secrets -split ','; foreach ($secret in $secretsArray) { if ($secret -and $secret.Trim()) { try { $describe = aws secretsmanager describe-secret --secret-id $secret.Trim() --output json 2>&1; if ($LASTEXITCODE -eq 0) { $obj = $describe | ConvertFrom-Json; if ($obj.DeletedDate) { Write-Host 'Restaurando y eliminando secreto:' $secret; aws secretsmanager restore-secret --secret-id $secret.Trim() 2>&1 | Out-Null; Start-Sleep -Seconds 2; aws secretsmanager delete-secret --secret-id $secret.Trim() --force-delete-without-recovery 2>&1 | Out-Null; Write-Host 'Secreto limpiado:' $secret; Start-Sleep -Seconds 1 } } } catch { } } }\""
+    command = <<-EOT
+      if command -v pwsh > /dev/null 2>&1; then
+        # PowerShell Core (funciona en Linux/macOS/Windows)
+        pwsh -NoProfile -ExecutionPolicy Bypass -Command "$secrets = '${self.triggers.secrets_list}'; $secretsArray = $secrets -split ','; foreach ($secret in $secretsArray) { if ($secret -and ($secret.Trim())) { try { $describe = aws secretsmanager describe-secret --secret-id $secret.Trim() --output json 2>&1; if ($LASTEXITCODE -eq 0) { $obj = $describe | ConvertFrom-Json; if ($obj.DeletedDate) { Write-Host \"Restaurando y eliminando secreto: $secret\"; aws secretsmanager restore-secret --secret-id $secret.Trim() 2>&1 | Out-Null; Start-Sleep -Seconds 2; aws secretsmanager delete-secret --secret-id $secret.Trim() --force-delete-without-recovery 2>&1 | Out-Null; Write-Host \"Secreto limpiado: $secret\"; Start-Sleep -Seconds 1 } } } catch { } } }"
+      elif command -v powershell > /dev/null 2>&1; then
+        # PowerShell en Windows
+        powershell -NoProfile -ExecutionPolicy Bypass -Command "$secrets = '${self.triggers.secrets_list}'; $secretsArray = $secrets -split ','; foreach ($secret in $secretsArray) { if ($secret -and ($secret.Trim())) { try { $describe = aws secretsmanager describe-secret --secret-id $secret.Trim() --output json 2>&1; if ($LASTEXITCODE -eq 0) { $obj = $describe | ConvertFrom-Json; if ($obj.DeletedDate) { Write-Host \"Restaurando y eliminando secreto: $secret\"; aws secretsmanager restore-secret --secret-id $secret.Trim() 2>&1 | Out-Null; Start-Sleep -Seconds 2; aws secretsmanager delete-secret --secret-id $secret.Trim() --force-delete-without-recovery 2>&1 | Out-Null; Write-Host \"Secreto limpiado: $secret\"; Start-Sleep -Seconds 1 } } } catch { } } }"
+      elif command -v sh > /dev/null 2>&1; then
+        # Bash/Shell en Linux/macOS/Git Bash
+        secrets="${self.triggers.secrets_list}"
+        IFS=',' read -ra SECRET_ARRAY <<< "$secrets"
+        for secret in "${SECRET_ARRAY[@]}"; do
+          if [ -n "$secret" ] && [ "$secret" != "" ]; then
+            secret=$(echo "$secret" | xargs)
+            describe_output=$(aws secretsmanager describe-secret --secret-id "$secret" --output json 2>/dev/null)
+            if [ $? -eq 0 ]; then
+              deleted_date=$(echo "$describe_output" | grep -o '"DeletedDate"[[:space:]]*:[[:space:]]*"[^"]*"' | cut -d'"' -f4 || echo "")
+              if [ -n "$deleted_date" ] && [ "$deleted_date" != "null" ]; then
+                echo "Restaurando y eliminando secreto: $secret"
+                aws secretsmanager restore-secret --secret-id "$secret" 2>/dev/null || true
+                sleep 2
+                aws secretsmanager delete-secret --secret-id "$secret" --force-delete-without-recovery 2>/dev/null || true
+                echo "Secreto limpiado: $secret"
+                sleep 1
+              fi
+            fi
+          fi
+        done
+      else
+        echo "Warning: No se encontró PowerShell ni sh. Algunos secretos eliminados pueden no limpiarse automáticamente."
+      fi
+    EOT
   }
 }
 
@@ -176,9 +207,22 @@ resource "null_resource" "cleanup_secrets_on_destroy" {
 
   # Durante destroy, limpia TODOS los secretos posibles
   # Esto se ejecuta SIEMPRE, incluso si los secretos no están en el estado
-  # Usa PowerShell para compatibilidad con Windows
+  # Comando multiplataforma: usa sh que está disponible en Linux/macOS/WSL/Git Bash
   provisioner "local-exec" {
-    when    = destroy
-    command = "powershell -Command \"$secrets = '${self.triggers.secrets_list}'; $secretsArray = $secrets -split ','; foreach ($secret in $secretsArray) { if ($secret) { Write-Host 'Limpiando secreto: ' $secret; aws secretsmanager restore-secret --secret-id $secret 2>$null; Start-Sleep -Seconds 1; aws secretsmanager delete-secret --secret-id $secret --force-delete-without-recovery 2>$null } }\""
+    when        = destroy
+    interpreter = ["sh", "-c"]
+    command = <<-EOT
+      secrets="${self.triggers.secrets_list}"
+      IFS=',' read -ra SECRET_ARRAY <<< "$secrets"
+      for secret in "${SECRET_ARRAY[@]}"; do
+        if [ -n "$secret" ] && [ "$secret" != "" ]; then
+          secret=$(echo "$secret" | xargs)
+          echo "Limpiando secreto: $secret"
+          aws secretsmanager restore-secret --secret-id "$secret" 2>/dev/null || true
+          sleep 1
+          aws secretsmanager delete-secret --secret-id "$secret" --force-delete-without-recovery 2>/dev/null || true
+        fi
+      done
+    EOT
   }
 }
